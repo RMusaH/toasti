@@ -2,7 +2,7 @@
 
 A leaderboard for counting toasties, meant to run on an office TV.
 
-![Dashboard](screenshots/dashboard.jpg)
+![Dashboard](screenshots/dashboard.gif)
 
 ![Edit page](screenshots/edit.png)
 
