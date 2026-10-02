@@ -2,6 +2,10 @@
 
 A leaderboard for counting toasties, meant to run on an office TV.
 
+![Dashboard](screenshots/dashboard.jpg)
+
+![Edit page](screenshots/edit.png)
+
 ## Run
 
 ```sh
