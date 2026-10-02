@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toasti Dashboard</title>
+<style>
+  :root { --card: rgba(40, 22, 10, .86); --accent: #ffb347; }
+  body { font-family: system-ui, sans-serif; background: radial-gradient(circle at 50% 30%, #3a1d0a, #120804); color: #fbe9d0; margin: 0; min-height: 100vh; }
+  canvas { position: fixed; inset: 0; z-index: 0; }
+  main { position: relative; z-index: 1; max-width: 960px; margin: auto; padding: 2rem; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .logo { height: clamp(24px, 3.5vh, 40px); opacity: .85; }
+  h1 { margin: 0; font-size: 1.4rem; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+  #edit h1 { margin-bottom: 1rem; }
+  #dashboard h1 { font-size: clamp(2rem, 6vh, 4.2rem); font-weight: 900; letter-spacing: .04em; line-height: 1; opacity: 1; }
+  #dashboard h1 b { color: var(--accent); text-shadow: 0 0 30px #ff7b00aa; }
+  .label { display: block; opacity: .65; font-size: .9rem; text-transform: uppercase; letter-spacing: .1em; margin-bottom: -.75rem; }
+  .total { font-size: clamp(5rem, 18vw, 10rem); font-weight: 900; line-height: 1; color: var(--accent); text-shadow: 0 0 40px #ff7b00aa; }
+  .pop { animation: pop .5s; }
+  @keyframes pop { 40% { transform: scale(1.15); } }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; margin: 1.5rem 0; }
+  .stats div, li, .chart { background: var(--card); backdrop-filter: blur(6px); border-radius: 14px; }
+  .stats div, .chart { padding: .9rem 1rem; }
+  .stats small, .chart small { display: block; opacity: .65; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  .stats b { font-size: 1.6rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ol { padding: 0; list-style: none; counter-reset: rank; }
+  li { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; margin: .5rem 0; position: relative; overflow: hidden; }
+  li .bar { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ff7b0033, #ffb34744); transition: width .6s; z-index: -1; }
+  #board li::before { content: attr(data-rank); font-weight: 700; width: 2rem; flex: none; }
+  li span { flex: 1; font-size: 1.2rem; }
+  li b { font-size: 1.4rem; }
+  input { font-size: 1rem; padding: .4rem; border-radius: 8px; border: 0; }
+  input[type=number] { width: 4.5rem; }
+  button { font-size: 1rem; padding: .4rem .8rem; border: 0; border-radius: 8px; background: var(--accent); color: #2a1406; cursor: pointer; }
+  form { display: flex; gap: .5rem; } form input { flex: 1; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: .75rem; margin: 1.5rem 0; }
+  .chart svg { display: block; width: 100%; height: auto; margin-top: .5rem; overflow: visible; }
+  .chart text { fill: currentColor; opacity: .6; font-size: 12px; }
+  .chart text.val { opacity: .95; font-weight: 700; }
+  .chart .axis { stroke: currentColor; opacity: .2; }
+  .chart .bar { fill: url(#barShine); }
+  .chart g:hover .bar { filter: brightness(1.35) drop-shadow(0 0 6px #ffb347); }
+  .chart .line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+  .chart .fill { fill: url(#areaFill); }
+  .chart .cross { stroke: currentColor; opacity: 0; }
+  .chart g:hover .cross { opacity: .35; }
+  .chart .wedge { stroke: #2a170b; stroke-width: 2; transition: scale .3s; }
+  .chart .wedge:hover { scale: 1.07; filter: brightness(1.2); }
+  .donut { display: flex; align-items: center; gap: 1.5rem; }
+  .donut svg { width: 170px; flex: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .9rem; margin-top: .5rem; }
+  .donut .legend { flex-direction: column; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .4rem; }
+  /* dashboard fills the screen exactly: left = numbers, right = charts. Narrow screens scroll instead. */
+  #dashboard:not([hidden]) { display: grid; grid-template-columns: minmax(340px, 1fr) 2fr; grid-template-rows: auto minmax(0, 1fr); gap: 1rem; max-width: none; height: 100vh; box-sizing: border-box; padding: 1.5rem; overflow: hidden; }
+  .side { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+  #dashboard header { grid-column: 1 / -1; margin: 0; }
+  .side .total { font-size: min(10rem, 16vh); }
+  /* milestone card next to the big number */
+  .hero { display: flex; align-items: center; gap: 1.25rem; }
+  .hero > div:first-child { flex: none; }
+  .goal { flex: 1; min-width: 0; display: flex; align-items: center; gap: 1rem; padding: .8rem 1rem; background: var(--card); border-radius: 14px; position: relative; overflow: hidden; animation: card-in .9s cubic-bezier(.2, .9, .3, 1.15) .2s both; }
+  .goal svg { height: min(8.5rem, 12vh); aspect-ratio: 1; flex: none; overflow: visible; }
+  .goal .track { fill: none; stroke: currentColor; opacity: .1; stroke-width: 11; }
+  .goal .prog { fill: none; stroke: url(#ringGrad); stroke-width: 11; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100;
+    transform: rotate(-90deg); transform-origin: 60px 60px; transition: stroke-dashoffset 1.4s cubic-bezier(.2, .9, .3, 1); animation: ring-glow 2.4s ease-in-out infinite; }
+  @keyframes ring-glow { 50% { filter: drop-shadow(0 0 8px #ff9a2e); } }
+  .goal .pct { fill: currentColor; font-size: 22px; font-weight: 800; }
+  .goal-text { min-width: 0; display: flex; flex-direction: column; gap: .15rem; }
+  .goal-text small { opacity: .65; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+  .goal-text > b { font-size: clamp(1.4rem, 3.4vh, 2.2rem); color: var(--accent); line-height: 1.1; }
+  .goal-text .facts { display: flex; flex-wrap: wrap; gap: .2rem .9rem; margin-top: .3rem; font-size: .9rem; }
+  .goal-text .up { color: #6fd58f; } .goal-text .down { color: #ff8a7a; }
+  .side .stats { grid-template-columns: repeat(3, 1fr); margin: 0; }
+  #board { flex: 1; min-height: 0; overflow: hidden; margin: 0; } /* more people than fit: the bottom of the list is cut */
+  #board li { padding: min(.75rem, 1vh) 1rem; margin: min(.5rem, .6vh) 0; }
+  #dashboard .charts { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); margin: 0; }
+  .chart { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .chart svg, .donut { flex: 1; min-height: 0; }
+  .donut svg { flex: none; height: 100%; width: auto; aspect-ratio: 1; }
+  @media (max-width: 1000px), (max-height: 600px) {
+    #dashboard:not([hidden]) { display: block; height: auto; overflow: visible; }
+    #dashboard .charts { grid-template-columns: 1fr; grid-template-rows: none; margin-top: 1rem; }
+    .chart svg, .donut { flex: none; }
+    .donut svg { height: 170px; }
+  }
+
+  /* ======== motion: everything below is decoration, switched off for prefers-reduced-motion ======== */
+  @property --angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+
+  /* cards: fly in, float, tilt toward the mouse with a spotlight, glowing border running around, gloss sweep */
+  .chart {
+    position: relative; isolation: isolate; overflow: hidden;
+    backdrop-filter: none; /* blur behind constantly animating cards is the expensive bit, so not here */
+    background: radial-gradient(420px circle at var(--mx, -999px) var(--my, -999px), rgba(255, 190, 110, .16), transparent 60%), var(--card);
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform .25s ease-out;
+    animation: card-in .9s cubic-bezier(.2, .9, .3, 1.15) both, float 7s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 130ms), calc(var(--i) * -1.3s);
+  }
+  @keyframes card-in { from { opacity: 0; scale: .85; } }
+  @keyframes float { 50% { translate: 0 -4px; } }
+  .chart::before { /* border light chasing around the card */
+    content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 2;
+    background: conic-gradient(from var(--angle), transparent 0 62%, #ff7b0055 72%, #ffb347 80%, #fff6e0 82%, transparent 90%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: border-run 6s linear infinite; animation-delay: calc(var(--i) * -1s);
+  }
+  @keyframes border-run { to { --angle: 360deg; } }
+  .chart::after { /* glossy reflection sweeping across, as a diagonal wave over the grid */
+    content: ''; position: absolute; top: -60%; bottom: -60%; left: 0; width: 30%; pointer-events: none; z-index: 1;
+    background: linear-gradient(90deg, transparent, rgba(255, 244, 222, .05) 30%, rgba(255, 244, 222, .2) 50%, rgba(255, 244, 222, .05) 70%, transparent);
+    rotate: 18deg; translate: -200% 0;
+    animation: shine 6s cubic-bezier(.5, 0, .3, 1) infinite; animation-delay: calc(var(--i) * .3s + 1s);
+  }
+  @keyframes shine { 0% { translate: -200% 0; } 30%, 100% { translate: 450% 0; } }
+  .chart small { /* titles shimmer */
+    background: linear-gradient(90deg, #fbe9d0 0 40%, #ffd18a 48%, #fff 50%, #ffd18a 52%, #fbe9d0 60%) 0 0 / 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; opacity: .8;
+    animation: text-shine 6s linear infinite; animation-delay: calc(var(--i) * .3s + 1s);
+  }
+  @keyframes text-shine { 0% { background-position: 100% 0; } 30%, 100% { background-position: 0 0; } }
+
+  /* bars: elastic grow from the baseline, gradient sheen running up, peak bar glows, peak label pops and bobs */
+  .chart .bar { transform-box: fill-box; transform-origin: 50% 100%; animation: grow .9s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: calc(var(--i) * 45ms + .3s); }
+  .chart .bar.top { animation: grow .9s cubic-bezier(.2, 1.5, .4, 1) both, glow 2.2s ease-in-out infinite; animation-delay: calc(var(--i) * 45ms + .3s), 1.4s; }
+  @keyframes grow { from { transform: scaleY(0); } }
+  @keyframes glow { 50% { filter: drop-shadow(0 0 8px #ffb347) brightness(1.15); } }
+  .chart .peak { transform-box: fill-box; transform-origin: 50% 100%; animation: pop-in .6s cubic-bezier(.2, 1.8, .4, 1) both, bob 2.2s ease-in-out infinite; animation-delay: 1s, 1.6s; }
+  @keyframes pop-in { from { scale: 0; opacity: 0; } }
+  @keyframes bob { 50% { translate: 0 -4px; } }
+
+  /* lines: draw themselves in, glow, and a comet runs along each one */
+  .chart .line { stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 3px currentColor); animation: draw 1.8s cubic-bezier(.6, 0, .2, 1) forwards; animation-delay: calc(var(--i) * 150ms + .3s); }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .chart .fill { animation: rise 1.2s ease-out both; animation-delay: 1s; transform-box: fill-box; transform-origin: 50% 100%; }
+  @keyframes rise { from { opacity: 0; transform: scaleY(.4); } }
+  .chart .comet { fill: #fff; filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 8px currentColor); }
+
+  /* donut: wedges spin in one by one, the ring slowly turns, sonar ripple in the middle, total breathes */
+  .chart .wedge { transform-box: view-box; transform-origin: 85px 85px; animation: wedge-in .9s cubic-bezier(.2, 1.3, .4, 1) both; animation-delay: calc(var(--i) * 120ms + .3s); }
+  @keyframes wedge-in { from { transform: rotate(-120deg) scale(.4); opacity: 0; } }
+  .chart .spin { transform-box: view-box; transform-origin: 85px 85px; animation: turn 60s linear infinite; }
+  @keyframes turn { to { rotate: 360deg; } }
+  .chart .halo { fill: none; stroke: var(--accent); stroke-width: 2; transform-box: view-box; transform-origin: 85px 85px; animation: halo 2.6s ease-out infinite; }
+  .chart .halo + .halo { animation-delay: 1.3s; }
+  @keyframes halo { from { scale: .55; opacity: .7; } to { scale: 1; opacity: 0; } }
+  .chart .center { transform-box: fill-box; transform-origin: center; animation: pop-in .7s cubic-bezier(.2, 1.8, .4, 1) .8s both, breathe 3s ease-in-out 1.5s infinite; }
+  @keyframes breathe { 50% { scale: 1.08; filter: drop-shadow(0 0 6px #ffb347); } }
+
+  /* heatmap: cells ripple in, lit cells do a wave, today pulses */
+  .chart .cell { transform-box: fill-box; transform-origin: center; animation: cell-in .5s cubic-bezier(.2, 1.6, .4, 1) both; animation-delay: calc(var(--d) * 14ms + .3s); }
+  .chart .cell.on { animation: cell-in .5s cubic-bezier(.2, 1.6, .4, 1) both, wave 6s ease-in-out infinite; animation-delay: calc(var(--d) * 14ms + .3s), calc(var(--d) * 70ms); }
+  .chart .cell.today { animation: cell-in .5s cubic-bezier(.2, 1.6, .4, 1) both, today 1.6s ease-in-out infinite; animation-delay: calc(var(--d) * 14ms + .3s), 1s; }
+  @keyframes cell-in { from { scale: 0; } }
+  @keyframes wave { 0%, 16%, 100% { translate: 0 0; } 8% { translate: 0 -3px; } }
+  @keyframes today { 50% { scale: 1.3; filter: drop-shadow(0 0 6px #ffb347); } }
+
+  /* legends and leaderboard slide in one by one, leaderboard bars fill up */
+  .legend span { animation: slide-in .5s cubic-bezier(.2, 1.3, .4, 1) both; animation-delay: calc(var(--i) * 80ms + .6s); }
+  #board li { animation: slide-in .6s cubic-bezier(.2, 1.3, .4, 1) both; animation-delay: calc(var(--i) * 70ms); }
+  #board li .bar { animation: fill-up 1.2s cubic-bezier(.2, .9, .3, 1) both; animation-delay: calc(var(--i) * 70ms + .2s); }
+  @keyframes slide-in { from { opacity: 0; translate: -24px 0; } }
+  @keyframes fill-up { from { width: 0; } }
+
+  /* parade: little toasties walking in single file from the title to the Capisoft logo.
+     Gait over one cycle (--T): stance 0-60% (thigh sweeps back, knee nearly straight), swing 60-100% (knee folds, leg comes forward).
+     The other leg runs half a cycle behind; each arm swings against its own leg. JS sets the walking speed to match the stride. */
+  #dashboard header { gap: 1rem; }
+  .parade { --T: .75s; flex: 1; align-self: stretch; position: relative; min-width: 0; }
+  .walker { position: absolute; left: 0; bottom: 0; height: min(70px, 7vh); transform-origin: 50% 100%; }
+  .walker svg { height: 100%; overflow: visible; }
+  .walker .rig { transform-box: view-box; transform-origin: 20px 58px; rotate: 4deg; animation: bob calc(var(--T) / 2) ease-in-out infinite alternate; }
+  @keyframes bob { from { translate: 0 1.2px; } to { translate: 0 -1.2px; } } /* low at heel strike, high at mid-stance */
+  .walker .j { transform-box: view-box; }
+  .walker .thigh { animation: thigh var(--T) linear infinite; }
+  .walker .shin { animation: shin var(--T) ease-in-out infinite; }
+  .walker .arm { animation: arm var(--T) ease-in-out infinite; }
+  .walker .fore { animation: fore var(--T) ease-in-out infinite; }
+  .walker .b { animation-delay: calc(var(--T) / -2); }
+  @keyframes thigh { 0% { rotate: -25deg; } 60% { rotate: 20deg; } 82% { rotate: -12deg; } 100% { rotate: -25deg; } }
+  @keyframes shin { 0% { rotate: 3deg; } 15% { rotate: 14deg; } 40% { rotate: 4deg; } 60% { rotate: 32deg; } 75% { rotate: 62deg; } 92% { rotate: 8deg; } 100% { rotate: 3deg; } }
+  @keyframes arm { 0%, 100% { rotate: 22deg; } 50% { rotate: -22deg; } }
+  @keyframes fore { 0%, 100% { rotate: -12deg; } 50% { rotate: -38deg; } }
+  .walker .eyes { transform-box: fill-box; transform-origin: center; animation: blink 3.7s infinite; }
+  @keyframes blink { 0%, 94%, 100% { scale: 1 1; } 97% { scale: 1 .1; } }
+  .walker .smoke circle { transform-box: fill-box; transform-origin: center; animation: smoke 1.8s ease-out infinite; }
+  @keyframes smoke { from { translate: 0 0; scale: .6; opacity: .8; } to { translate: 3px -16px; scale: 2.2; opacity: 0; } }
+
+  /* parade reactions: name flags, crowns, sprinters, and everyone cheering on a milestone */
+  .walker .flag { position: absolute; bottom: 92%; left: 50%; padding-left: 3px; border-left: 2px solid #f5d9a8; height: 26px; }
+  .walker .flag span { display: block; background: var(--accent); color: #2a1406; font: 800 11px/1 system-ui; padding: 3px 6px; border-radius: 0 4px 4px 0; white-space: nowrap; box-shadow: 0 0 10px #ff7b0088;
+    transform-origin: 0 50%; animation: flutter .5s ease-in-out infinite alternate; }
+  @keyframes flutter { from { rotate: 0deg; } to { rotate: 4deg; } }
+  .walker .wcrown { position: absolute; bottom: 86%; left: 22%; font-size: min(22px, 2.2vh); rotate: -8deg; filter: drop-shadow(0 0 6px #ffd84a); }
+  .walker .wcrown + .flag { bottom: 120%; }
+  .walker.sprint { z-index: 2; }
+  .walker.sprint::after { content: ''; position: absolute; right: 80%; bottom: 20%; width: 40px; height: 40%; background: linear-gradient(90deg, transparent, #ffe6bd66); border-radius: 50%; filter: blur(3px); } /* speed streak */
+  .parade.party .walker .rig { animation: hop .32s ease-in-out infinite alternate; }
+  .parade.party .walker .arm { animation: cheer .32s ease-in-out infinite alternate; }
+  @keyframes hop { from { translate: 0 0; } to { translate: 0 -7px; } }
+  @keyframes cheer { from { rotate: 150deg; } to { rotate: 195deg; } }
+
+  /* celebrations: banner, confetti, crown, overtake flash */
+  #confetti { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+  #banner { position: fixed; z-index: 6; left: 50%; top: 42%; translate: -50% -50%; pointer-events: none; text-align: center; padding: 1.5rem 3rem 1.8rem; border-radius: 28px;
+    background: radial-gradient(closest-side, rgba(30, 14, 4, .92), rgba(30, 14, 4, .75) 70%, transparent); opacity: 0; scale: .3; transition: opacity .35s, scale .35s; }
+  #banner.show { opacity: 1; scale: 1; transition: none; animation: banner-in .8s cubic-bezier(.2, 1.6, .4, 1); }
+  @keyframes banner-in { from { scale: .2; rotate: -8deg; opacity: 0; } }
+  #banner .emoji { font-size: clamp(3rem, 9vh, 7rem); display: inline-block; animation: wobble 1s ease-in-out infinite; }
+  @keyframes wobble { 25% { rotate: -12deg; scale: 1.1; } 75% { rotate: 12deg; scale: 1.1; } }
+  #banner .big { font-size: clamp(2.5rem, 8vh, 6.5rem); font-weight: 900; line-height: 1; letter-spacing: .02em; white-space: nowrap;
+    background: linear-gradient(90deg, #ffb347, #fff3d6, #ffb347, #ff7b00, #ffb347) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 24px #ff7b00aa); animation: text-shine 2s linear infinite; }
+  #banner .sub { font-size: clamp(1.1rem, 3vh, 2rem); font-weight: 700; margin-top: .4rem; opacity: .9; }
+  #board li { overflow: visible; }
+  #board li .bar { border-radius: inherit; }
+  #board.settled li, #board.settled li .bar { animation: none; } /* after the first render, rows slide to new places instead */
+  #board .crown { flex: none; display: inline-block; margin-right: -.4rem; filter: drop-shadow(0 0 6px #ffd84a); animation: glint 2.5s ease-in-out infinite; }
+  #board .crown.drop { animation: crown-drop 1.1s cubic-bezier(.3, 1.4, .5, 1) both, glint 2.5s ease-in-out 1.1s infinite; }
+  @keyframes crown-drop { 0% { translate: 0 -140px; rotate: -40deg; opacity: 0; } 55% { translate: 0 6px; rotate: 12deg; opacity: 1; } 75% { translate: 0 -6px; rotate: -6deg; } 100% { translate: 0 0; rotate: 0deg; } }
+  @keyframes glint { 50% { filter: drop-shadow(0 0 12px #ffe680) brightness(1.3); } }
+  #board.settled li.zap, #board li.zap { animation: zap 1.6s ease-out; }
+  @keyframes zap { 0% { box-shadow: 0 0 0 0 #ffb347; background-color: #ffb34766; } 30% { box-shadow: 0 0 30px 6px #ffb347aa; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  /* TV mode: one panel blown up over the dashboard (the header and parade stay on top) */
+  #dashboard header { position: relative; z-index: 4; }
+  #spot { display: none; position: fixed; inset: 0; z-index: 3; padding: calc(min(4.2rem, 6vh) + 3rem) 3vw 3vh; box-sizing: border-box;
+    background: radial-gradient(circle at 50% 40%, rgba(58, 29, 10, .93), rgba(18, 8, 4, .97)); flex-direction: column; gap: 1rem; }
+  #spot.show { display: flex; animation: spot-in .8s cubic-bezier(.2, .9, .3, 1.1); }
+  @keyframes spot-in { from { opacity: 0; scale: .92; } }
+  #spot h2 { margin: 0; font-size: clamp(1.5rem, 4vh, 3rem); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); }
+  #spot > .chart { flex: 1; padding: 2vh 2vw; }
+  #spot > .chart small { font-size: clamp(1rem, 2.6vh, 2rem); }
+  #spot > .chart .legend { font-size: clamp(1rem, 2.4vh, 1.8rem); gap: .6rem 2rem; }
+  #spot > .chart .legend i { width: 18px; height: 18px; }
+  #spot > #board { flex: 1; margin: 0; }
+  #spot > #board li { padding: 1.3vh 2rem; margin: 1vh 0; }
+  #spot > #board li::before, #spot > #board li span, #spot > #board li b { font-size: clamp(1.4rem, 4vh, 3rem); }
+  #spot > #board li::before { width: 4rem; }
+  #tvbar { position: fixed; left: 0; bottom: 0; height: 4px; width: 100%; z-index: 7; background: linear-gradient(90deg, #ff7b00, #ffb347, #fff3d6); transform-origin: 0 50%; scale: 0 1; box-shadow: 0 0 12px #ff7b00; }
+  nav button { background: none; border: 0; color: inherit; opacity: .5; font-size: 1rem; padding: 0 .5rem; cursor: pointer; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .parade { visibility: hidden; }
+    .chart, .chart *, .chart::before, .chart::after, .legend span, #board li, #board li .bar { animation: none !important; transition: none !important; }
+    .chart .line { stroke-dashoffset: 0; } .chart .comet { display: none; }
+  }
+
+  nav { position: fixed; bottom: 1rem; right: 1rem; z-index: 2; } nav a { color: inherit; opacity: .4; }
+</style>
+<script type="importmap">{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }</script>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="barShine" x1="0" y1="1" x2="0" y2="0" spreadMethod="repeat">
+    <stop offset="0" stop-color="#ff9a2e"/><stop offset=".4" stop-color="#ffb347"/><stop offset=".5" stop-color="#ffe6bd"/><stop offset=".6" stop-color="#ffb347"/><stop offset="1" stop-color="#ff9a2e"/>
+    <animateTransform attributeName="gradientTransform" type="translate" values="0 0; 0 -1" dur="2.4s" repeatCount="indefinite"/>
+  </linearGradient>
+  <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffe6bd"/><stop offset=".5" stop-color="#ffb347"/><stop offset="1" stop-color="#ff7b00"/>
+  </linearGradient>
+  <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffb347" stop-opacity=".5"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+  </linearGradient>
+</defs></svg>
+
+<main id="dashboard">
+  <div id="spot"></div>
+  <header><h1>🥪 <b>Toasti</b> Dashboard</h1><div class="parade" id="parade" aria-hidden="true"></div><img class="logo" src="/capisoft-logo.png" alt="Capisoft" onerror="this.style.visibility='hidden'"></header>
+  <section class="side">
+  <div class="hero">
+    <div><small class="label">Toastis made</small><div class="total" id="total">0</div></div>
+    <div class="goal">
+      <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="48"/><circle class="prog" id="goal-ring" cx="60" cy="60" r="48" pathLength="100"/>
+        <text class="pct" id="goal-pct" x="60" y="68" text-anchor="middle">0%</text></svg>
+      <div class="goal-text">
+        <small>Next milestone</small>
+        <b id="goal-next">10</b>
+        <span id="goal-left">10 to go</span>
+        <div class="facts"><span>🔥 <b id="streak">0</b> day streak</span><span id="vs"></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="stats">
+    <div><small>Today</small><b id="today">0</b></div>
+    <div><small>Top toaster</small><b id="top">–</b></div>
+    <div><small>Toasters</small><b id="people">0</b></div>
+    <div><small>Avg / toaster</small><b id="avg">0</b></div>
+    <div><small>Best day</small><b id="best">0</b></div>
+    <div><small>Days toasting</small><b id="days">0</b></div>
+  </div>
+  <ol id="board"></ol>
+  </section>
+  <div class="charts">
+    <div class="chart" style="--i:0"><small>Last 14 days</small><svg id="c-daily" viewBox="0 0 600 170"></svg></div>
+    <div class="chart" style="--i:1"><small>Total, all time</small><svg id="c-cumulative" viewBox="0 0 600 170"></svg></div>
+    <div class="chart" style="--i:1"><small>Share per toaster</small><div class="donut"><svg id="c-share" viewBox="0 0 170 170"></svg><div class="legend" id="l-share"></div></div></div>
+    <div class="chart" style="--i:2"><small>Toaster race, all time</small><svg id="c-race" viewBox="0 0 600 170"></svg><div class="legend" id="l-race"></div></div>
+    <div class="chart" style="--i:2"><small>By weekday</small><svg id="c-weekday" viewBox="0 0 600 170"></svg></div>
+    <div class="chart" style="--i:3"><small>Last 26 weeks (brighter = more)</small><svg id="c-heat" viewBox="0 0 530 150"></svg></div>
+  </div>
+</main>
+
+<main id="edit" hidden>
+  <h1>Update toastis</h1>
+  <form id="add"><input name="name" placeholder="Name" required><button>Add</button></form>
+  <ol id="rows"></ol>
+</main>
+
+<canvas id="confetti"></canvas>
+<div id="banner" aria-live="polite"></div>
+<div id="tvbar" hidden></div>
+<nav><button id="tv" title="TV mode on/off">📺</button><button id="sound" title="Sound on/off">🔇</button><a id="switch" href="#edit">edit</a></nav>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+  // ---- data: { people: [{name, count, days: {'YYYY-MM-DD': n}}] }, stored by server.js ----
+  // Daily totals are always summed from people's own days, so they can't drift from the counts.
+  let data = { people: [] }, version = null, loaded = false;
+  async function pull() {
+    const res = await fetch('/data');
+    if (!res.ok) return;
+    const v = res.headers.get('x-version'); // index.html changed on the server: reload so no tab runs old code
+    if (version && v !== version) return location.reload();
+    version = v;
+    const before = data.people;
+    data = { people: (await res.json()).people || [] };
+    if (loaded && location.hash !== '#edit') celebrateChanges(before, data.people);
+    loaded = true;
+    render();
+  }
+  // every edit starts from the server's latest data, so a stale tab can't overwrite newer numbers
+  async function change(fn) {
+    await pull();
+    fn(data.people);
+    save();
+  }
+  function setCount(p, n) {
+    n = Math.max(0, n || 0);
+    const k = todayKey();
+    (p.days ||= {})[k] = Math.max(0, (p.days[k] || 0) + n - p.count);
+    p.count = n;
+  }
+  async function save() {
+    render();
+    const res = await fetch('/data', { method: 'PUT', body: JSON.stringify(data) }).catch(() => null);
+    if (!res?.ok) alert('Save failed, is the server running?');
+  }
+  const todayKey = () => new Date().toLocaleDateString('sv'); // YYYY-MM-DD, local time
+
+  const $ = id => document.getElementById(id);
+  const tag = (name, props, ...kids) => { const el = Object.assign(document.createElement(name), props); el.append(...kids); return el; };
+
+  // ---- charts: hand-rolled SVG, hover shows native tooltips ----
+  // dataviz reference palette, dark steps; validated against the card surface (#22130a)
+  const COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+  const OTHER = '#8a7a6a';
+  const W = 600, H = 170, B = H - 20, T = 18; // width, height, baseline, top padding
+  const svg = (name, attrs = {}, ...kids) => {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    e.append(...kids);
+    return e;
+  };
+  const tip = text => svg('title', {}, text);
+  const axis = () => svg('line', { x1: 0, x2: W, y1: B, y2: B, class: 'axis' });
+  const keyOf = d => d.toLocaleDateString('sv');
+  const fmt = (d, o = { day: 'numeric', month: 'short' }) => d.toLocaleDateString(undefined, o);
+  const lastDays = n => Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return d; });
+  // count as it stood at the end of `key`: current count minus everything added after that day
+  const asOf = (count, dayMap = {}, key) => Math.max(0, count - Object.entries(dayMap).reduce((s, [k, n]) => k > key ? s + n : s, 0));
+
+  function bars(el, items) {
+    const max = Math.max(1, ...items.map(i => i.value)), cw = W / items.length, bw = Math.min(cw - 2, 28);
+    const peak = items.findIndex(i => i.value === max);
+    el.replaceChildren(axis(), ...items.map((it, i) => {
+      const x = i * cw + (cw - bw) / 2, h = it.value / max * (B - T), r = Math.min(4, h, bw / 2);
+      return svg('g', {}, tip(it.title),
+        svg('rect', { x: i * cw, y: 0, width: cw, height: H, fill: 'transparent' }),
+        h ? svg('path', { class: i === peak ? 'bar top' : 'bar', style: `--i:${i}`, d: `M${x},${B}V${B - h + r}Q${x},${B - h} ${x + r},${B - h}H${x + bw - r}Q${x + bw},${B - h} ${x + bw},${B - h + r}V${B}Z` }) : '',
+        svg('text', { x: x + bw / 2, y: H - 4, 'text-anchor': 'middle' }, it.label),
+        i === peak && it.value ? svg('text', { x: x + bw / 2, y: B - h - 5, 'text-anchor': 'middle', class: 'val peak' }, it.value) : '');
+    }));
+  }
+
+  function lines(el, dates, series, fill) {
+    const n = dates.length, step = (W - 16) / (n - 1), max = Math.max(1, ...series.flatMap(s => s.values));
+    const x = i => 8 + i * step, y = v => B - v / max * (B - T);
+    const kids = [axis(), svg('text', { x: 8, y: H - 4 }, fmt(dates[0])), svg('text', { x: W - 8, y: H - 4, 'text-anchor': 'end' }, fmt(dates[n - 1]))];
+    series.forEach((s, si) => {
+      const d = s.values.map((v, i) => `${x(i)},${y(v)}`).join(' L');
+      if (fill) kids.push(svg('path', { class: 'fill', d: `M${x(0)},${B} L${d} L${x(n - 1)},${B}Z` }));
+      kids.push(svg('path', { class: 'line', d: 'M' + d, pathLength: 1, style: `color:${s.color};--i:${si}` }));
+      // comet: a glowing dot running along the line, fading in and out at the ends
+      const dur = `${3.5 + si * .4}s`;
+      kids.push(svg('circle', { r: 3.5, class: 'comet', style: `color:${s.color}` },
+        svg('animateMotion', { path: 'M' + d, dur, repeatCount: 'indefinite' }),
+        svg('animate', { attributeName: 'opacity', values: '0;1;1;0', keyTimes: '0;.1;.85;1', dur, repeatCount: 'indefinite' })));
+    });
+    if (series.length === 1) kids.push(svg('text', { x: x(n - 1), y: y(series[0].values[n - 1]) - 8, 'text-anchor': 'end', class: 'val peak' }, series[0].values[n - 1]));
+    // one hover column per day: crosshair + tooltip listing every series
+    dates.forEach((date, i) => kids.push(svg('g', {},
+      tip([fmt(date, { weekday: 'short', day: 'numeric', month: 'short' }), ...series.map(s => `${s.name}: ${s.values[i]}`)].join('\n')),
+      svg('rect', { x: x(i) - step / 2, y: 0, width: step, height: B, fill: 'transparent' }),
+      svg('line', { x1: x(i), x2: x(i), y1: T, y2: B, class: 'cross' }))));
+    el.replaceChildren(...kids);
+  }
+
+  function donut(el, items, total) {
+    const R = 80, r = 52, c = 85, at = (rad, a) => `${c + rad * Math.cos(a)},${c + rad * Math.sin(a)}`;
+    let a = -Math.PI / 2;
+    el.replaceChildren(svg('g', { class: 'spin' }, ...items.filter(i => i.value).map((it, i) => {
+      const a2 = a + Math.min(it.value / total * 2 * Math.PI, 2 * Math.PI - 1e-4), big = a2 - a > Math.PI ? 1 : 0;
+      const d = `M${at(R, a)} A${R},${R} 0 ${big} 1 ${at(R, a2)} L${at(r, a2)} A${r},${r} 0 ${big} 0 ${at(r, a)}Z`;
+      a = a2;
+      return svg('path', { class: 'wedge', d, style: `fill:${it.color};--i:${i}` }, tip(`${it.name}: ${it.value} (${Math.round(it.value / total * 100)}%)`));
+    })), svg('circle', { cx: c, cy: c, r: r - 4, class: 'halo' }), svg('circle', { cx: c, cy: c, r: r - 4, class: 'halo' }),
+    svg('text', { x: c, y: c + 8, 'text-anchor': 'middle', class: 'val center', style: 'font-size:24px' }, total));
+  }
+
+  function heatmap(el, days) {
+    const weeks = 26, cell = 16, gap = 3, left = 30, top = 4, today = new Date();
+    const start = new Date(); start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - (weeks - 1) * 7); // Monday, 25 weeks back
+    const max = Math.max(1, ...Object.values(days));
+    const kids = ['Mon', 'Wed', 'Fri'].map((l, i) => svg('text', { x: 0, y: top + (i * 2) * (cell + gap) + 12 }, l));
+    for (let w = 0; w < weeks; w++) for (let dow = 0; dow < 7; dow++) {
+      const d = new Date(start); d.setDate(start.getDate() + w * 7 + dow);
+      if (d > today) continue;
+      const v = days[keyOf(d)] || 0;
+      kids.push(svg('rect', { x: left + w * (cell + gap), y: top + dow * (cell + gap), width: cell, height: cell, rx: 3,
+        class: keyOf(d) === keyOf(today) ? 'cell today' : v ? 'cell on' : 'cell',
+        style: (v ? `fill:var(--accent);opacity:${.25 + .75 * v / max}` : 'fill:currentColor;opacity:.07') + `;--d:${w + dow}` },
+        tip(`${fmt(d, { weekday: 'short', day: 'numeric', month: 'short' })}: ${v}`)));
+    }
+    el.replaceChildren(...kids);
+  }
+
+  const legend = (el, items) => el.replaceChildren(...items.map((it, i) =>
+    tag('span', { style: `--i:${i}` }, tag('i', { style: `background:${it.color}` }), `${it.name} `, tag('b', { textContent: it.value ?? '' }))));
+
+  function charts(people, days, total) {
+    // colour follows the person (add order), never their rank.
+    // ponytail: 8 colours, everyone after the 8th folds into "Other"
+    const groups = people.slice(0, 8).map((p, i) => ({ ...p, color: COLORS[i] }));
+    if (people.length > 8) {
+      const rest = people.slice(8), merged = {};
+      for (const p of rest) for (const [k, n] of Object.entries(p.days || {})) merged[k] = (merged[k] || 0) + n;
+      groups.push({ name: 'Other', color: OTHER, count: rest.reduce((s, p) => s + p.count, 0), days: merged });
+    }
+
+    const d14 = lastDays(14), first = Object.keys(days).sort()[0];
+    const all = lastDays(first ? Math.max(2, Math.round((new Date() - new Date(first + 'T00:00')) / 864e5) + 1) : 2); // since the first tracked day
+    bars($('c-daily'), d14.map(d => ({ label: d.getDate(), value: days[keyOf(d)] || 0, title: `${fmt(d, { weekday: 'short', day: 'numeric', month: 'short' })}: ${days[keyOf(d)] || 0}` })));
+    lines($('c-cumulative'), all, [{ name: 'Total', color: 'var(--accent)', values: all.map(d => asOf(total, days, keyOf(d))) }], true);
+
+    const share = groups.map(g => ({ name: g.name, color: g.color, value: g.count }));
+    donut($('c-share'), share, total || 1);
+    legend($('l-share'), share);
+
+    lines($('c-race'), all, groups.map(g => ({ name: g.name, color: g.color, values: all.map(d => asOf(g.count, g.days, keyOf(d))) })));
+    legend($('l-race'), groups.map(g => ({ name: g.name, color: g.color })));
+
+    const wk = [0, 0, 0, 0, 0, 0, 0];
+    for (const [k, n] of Object.entries(days)) wk[(new Date(k + 'T00:00').getDay() + 6) % 7] += n;
+    const names = wk.map((_, i) => fmt(new Date(2024, 0, 1 + i), { weekday: 'short' })); // 1 Jan 2024 was a Monday
+    bars($('c-weekday'), wk.map((value, i) => ({ label: names[i], value, title: `${names[i]}: ${value}` })));
+
+    heatmap($('c-heat'), days);
+  }
+
+  // the parade: a new toastie sets off every GAP seconds, so the line is evenly spaced, and walks to the logo.
+  // Events put special walkers in walkerQueue (they take the next slot): a flag with the maker's name, a crown
+  // for a new leader. sprintWalker() sends one running straight past the line.
+  const walkerQueue = [];
+  let sprintWalker = () => {}, paradeParty = () => {};
+  {
+    const GAP = 4, T = .75, LEG = 16, VIEW_H = 58, DEG = Math.PI / 180;
+    const tones = ['#e8b46e', '#d99a4e', '#f0c886', '#c98a45'];
+    const parade = $('parade');
+    let nextId = 0;
+    // feet stay planted: during stance (60% of the cycle) the hip travels LEG * (sin 20° + sin 25°)
+    const speed = () => Math.min(70, innerHeight * .07) / VIEW_H * LEG * (Math.sin(20 * DEG) + Math.sin(25 * DEG)) / (.6 * T); // px/s
+
+    function walkerSVG(special) {
+      const id = nextId++, burnt = !special && Math.random() < 1 / 6, grill = !burnt && Math.random() < .5;
+      const tone = burnt ? '#3a2314' : tones[Math.floor(Math.random() * tones.length)];
+      const slice = 'M8,36 L8,15 C4,3 16,1 20,3 C24,1 36,3 32,15 L32,36 Q32,38 30,38 L10,38 Q8,38 8,36Z';
+      const leg = (side, x, color) => `<g class="j thigh ${side}" style="transform-origin:${x}px 37px"><path d="M${x},37 v8" stroke="${color}"/>
+        <g class="j shin ${side}" style="transform-origin:${x}px 45px"><path d="M${x},45 v8" stroke="${color}"/><ellipse cx="${x + 2.5}" cy="54" rx="3.4" ry="1.8" fill="${color}"/></g></g>`;
+      const arm = (side, x, color) => `<g class="j arm ${side}" style="transform-origin:${x}px 21px"><path d="M${x},21 v7" stroke="${color}"/>
+        <g class="j fore ${side}" style="transform-origin:${x}px 28px"><path d="M${x},28 v6" stroke="${color}"/><circle cx="${x}" cy="34.5" r="2" fill="${color}"/></g></g>`;
+      return `<svg viewBox="0 0 40 58"><g class="rig" stroke-width="3" stroke-linecap="round" fill="none">
+        ${leg('b', 17, '#c9ad80')}${arm('a', 32, '#c9ad80')}
+        <g stroke="none">
+          <defs><clipPath id="slice${id}"><path d="${slice}"/></clipPath></defs>
+          <path d="${slice}" fill="${tone}" stroke="${burnt ? '#120904' : '#9a5a24'}" stroke-width="2.4"/>
+          ${burnt ? `<g clip-path="url(#slice${id})" fill="#0e0703"><ellipse cx="12" cy="10" rx="7" ry="5"/><ellipse cx="29" cy="31" rx="8" ry="6"/><ellipse cx="20" cy="36" rx="9" ry="3"/></g>
+            <g class="smoke" fill="#a39a92">${[0, 1, 2].map(i => `<circle cx="${16 + i * 4}" cy="3" r="2.4" style="animation-delay:${-i * .6}s"/>`).join('')}</g>` : ''}
+          ${grill ? `<g clip-path="url(#slice${id})" stroke="#5a3010" stroke-width="2.2" opacity=".55">${[0, 8, 16, 24, 32].map(o => `<path d="M${o - 6},38 L${o + 14},0"/>`).join('')}</g>` : ''}
+          <path d="M11,38 q2,6 4,0 M23,38 q2,7 4,0" stroke="#ffc93a" stroke-width="3" stroke-linecap="round"/>
+          <g class="eyes" fill="${burnt ? '#f3e6d4' : '#2a1406'}"><circle cx="17" cy="19" r="2.1"/><circle cx="26" cy="19" r="2.1"/></g>
+          <circle cx="29" cy="25" r="2" fill="#ff8a7a" opacity=".6"/>
+          <path d="${burnt ? 'M19,28 Q23,24 27,28' : 'M19,25 Q23,29 27,25'}" stroke="${burnt ? '#f3e6d4' : '#2a1406'}" stroke-width="1.8" stroke-linecap="round"/>
+        </g>
+        ${leg('a', 23, '#f5d9a8')}${arm('b', 9, '#f5d9a8')}
+      </g></svg>`;
+    }
+
+    // start a walker; `age` seconds into its walk lets the page open with a line already under way
+    function enter(age = 0, opts = {}) {
+      const pace = opts.sprint ? 2.5 : 1; // sprinting = same stride, faster legs
+      const w = parade.clientWidth, dist = w + 90, dur = dist / (speed() * pace) * 1000;
+      if (age * 1000 >= dur) return;
+      const el = tag('div', { className: opts.sprint ? 'walker sprint' : 'walker', innerHTML: walkerSVG(opts.name) });
+      if (opts.sprint) el.style.setProperty('--T', `${T / pace}s`);
+      if (opts.crown) el.append(tag('div', { className: 'wcrown', textContent: '👑' }));
+      if (opts.name) el.append(tag('div', { className: 'flag' }, tag('span', { textContent: opts.name })));
+      parade.append(el);
+      const at = f => `translateX(${-60 + f * dist}px)`;
+      const anim = el.animate([
+        { transform: `${at(0)} scale(.6)`, opacity: 0 },
+        { transform: `${at(.04)} scale(1)`, opacity: 1, offset: .04 },
+        { transform: `${at(.94)} scale(1)`, opacity: 1, offset: .94 },
+        { transform: `${at(1)} scale(.3)`, opacity: 0 }, // shrinks into the logo
+      ], { duration: dur, easing: 'linear' });
+      anim.currentTime = age * 1000;
+      // legs in step with how far along it already is
+      if (age) for (const j of el.querySelectorAll('.j, .rig')) j.style.animationDelay = `calc(${-(age % T)}s ${j.classList.contains('b') ? '- var(--T) / 2' : ''})`;
+      anim.onfinish = () => el.remove();
+    }
+
+    // prefill a full line so the page opens mid-parade, then keep them coming
+    const crossing = (parade.clientWidth + 90) / speed();
+    for (let age = 0; age < crossing; age += GAP) enter(age);
+    setInterval(() => { if (!$('dashboard').hidden && !document.hidden) enter(0, walkerQueue.shift()); }, GAP * 1000);
+    sprintWalker = opts => enter(0, { ...opts, sprint: true });
+    paradeParty = ms => { parade.classList.add('party'); clearTimeout(paradeParty.t); paradeParty.t = setTimeout(() => parade.classList.remove('party'), ms); };
+  }
+
+  // cards tilt toward the mouse with a spotlight where it points
+  for (const card of document.querySelectorAll('.chart')) {
+    card.addEventListener('pointermove', e => {
+      const r = card.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      card.style.setProperty('--mx', `${x * 100}%`); card.style.setProperty('--my', `${y * 100}%`);
+      card.style.setProperty('--rx', `${(.5 - y) * 6}deg`); card.style.setProperty('--ry', `${(x - .5) * 8}deg`);
+    });
+    card.addEventListener('pointerleave', () => ['--mx', '--my', '--rx', '--ry'].forEach(p => card.style.removeProperty(p)));
+  }
+
+  // milestone ring, streak, and today vs yesterday, next to the big number
+  const STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  function milestone(total, days) {
+    const next = STEPS.find(m => m > total) ?? Math.ceil((total + 1) / 10000) * 10000;
+    const prev = next > 10000 ? next - 10000 : [0, ...STEPS].filter(m => m < next).pop();
+    const pct = Math.round((total - prev) / (next - prev) * 100);
+    $('goal-ring').style.strokeDashoffset = 100 - pct;
+    $('goal-pct').textContent = pct + '%';
+    $('goal-next').textContent = next;
+    $('goal-left').textContent = `${next - total} to go`;
+    const d = new Date();
+    if (!days[keyOf(d)]) d.setDate(d.getDate() - 1); // a streak isn't broken until today ends
+    let streak = 0;
+    while (days[keyOf(d)] > 0) { streak++; d.setDate(d.getDate() - 1); }
+    $('streak').textContent = streak;
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    const diff = (days[todayKey()] || 0) - (days[keyOf(y)] || 0);
+    Object.assign($('vs'), diff > 0 ? { className: 'up', textContent: `▲ ${diff} vs yesterday` }
+      : diff < 0 ? { className: 'down', textContent: `▼ ${-diff} vs yesterday` } : { className: '', textContent: '= same as yesterday' });
+  }
+
+  // ---- celebrations: work out what happened between two snapshots, then throw a party for it ----
+  let crownDrop = null, goldUntil = 0;
+  const zapNames = new Set();
+
+  function celebrateChanges(before, after) {
+    const was = Object.fromEntries(before.map(p => [p.name, p.count])), prev = name => was[name] ?? 0;
+    const makers = after.filter(p => p.count > prev(p.name));
+    if (!makers.length) return; // only increases get celebrated
+    sfx.ding();
+    for (const p of makers) for (let i = 0; i < Math.min(p.count - prev(p.name), 3); i++) walkerQueue.push({ name: p.name });
+
+    const sum = list => list.reduce((s, p) => s + p.count, 0), t0 = sum(before), t1 = sum(after);
+    const hit = [...STEPS, ...Array.from({ length: Math.floor(t1 / 10000) }, (_, i) => (i + 1) * 10000)].filter(m => t0 < m && m <= t1).pop();
+    if (hit) announce('🎉', `${hit} TOASTIS`, 'milestone reached!', () => {
+      sfx.fanfare(); confetti(280, innerWidth / 2, innerHeight * .4, 1.6); goldUntil = performance.now() + 7000; paradeParty(6000);
+    });
+
+    const soleLeader = list => { const top = Math.max(0, ...list.map(p => p.count)), names = list.filter(p => top && p.count === top); return names.length === 1 ? names[0].name : null; };
+    const newLeader = soleLeader(after);
+    if (newLeader && newLeader !== soleLeader(before)) {
+      crownDrop = newLeader;
+      announce('👑', newLeader, 'takes the lead!', () => { sfx.crown(); confetti(160, innerWidth * .18, innerHeight * .5, 1); walkerQueue.unshift({ name: newLeader, crown: true }); });
+    }
+
+    for (const p of makers) { // overtakes: was strictly behind someone, now strictly ahead of them
+      if (p.name === newLeader) continue; // the crown already covers that one
+      const passed = after.filter(q => q.name !== p.name && prev(p.name) < prev(q.name) && p.count > q.count).map(q => q.name);
+      if (!passed.length) continue;
+      zapNames.add(p.name);
+      const who = passed.length <= 2 ? passed.join(' & ') : `${passed.slice(0, 2).join(', ')} and ${passed.length - 2} more`;
+      announce('⚡', p.name, `overtook ${who}!`, () => { sfx.whoosh(); sprintWalker({ name: p.name }); });
+    }
+  }
+
+  // banners play one after another; onShow fires the sound/confetti in sync with its banner
+  const banners = [];
+  function announce(emoji, big, sub, onShow) {
+    banners.push({ emoji, big, sub, onShow });
+    if (banners.length === 1) showBanner();
+  }
+  function showBanner() {
+    const b = banners[0], el = $('banner');
+    if (!b) return;
+    el.replaceChildren(tag('div', { className: 'emoji', textContent: b.emoji }), tag('div', { className: 'big', textContent: b.big }), tag('div', { className: 'sub', textContent: b.sub }));
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    b.onShow?.();
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => { banners.shift(); showBanner(); }, 450); }, 3200);
+  }
+
+  // confetti: a 2D canvas that only runs while pieces are in the air
+  const confetti = (() => {
+    const c = $('confetti'), g = c.getContext('2d'), palette = ['#ffb347', '#ff7b00', '#fff3d6', '#ffd84a', ...COLORS];
+    let bits = [];
+    function frame() {
+      g.clearRect(0, 0, c.width, c.height);
+      for (const b of bits) {
+        b.vy += .28; b.vx *= .985; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+        g.save(); g.translate(b.x, b.y); g.rotate(b.r); g.scale(1, Math.cos(b.r * 3)); // flip as it tumbles
+        g.fillStyle = b.color; g.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); g.restore();
+      }
+      bits = bits.filter(b => b.y < c.height + 40);
+      if (bits.length) requestAnimationFrame(frame); else g.clearRect(0, 0, c.width, c.height);
+    }
+    return (n, x, y, spread = 1) => {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const idle = !bits.length;
+      c.width = innerWidth; c.height = innerHeight;
+      for (let i = 0; i < n; i++) bits.push({ x, y, vx: (Math.random() - .5) * 22 * spread, vy: -Math.random() * 16 - 6, r: Math.random() * 6, vr: (Math.random() - .5) * .4,
+        w: 7 + Math.random() * 7, h: 4 + Math.random() * 4, color: palette[Math.floor(Math.random() * palette.length)] });
+      if (idle) requestAnimationFrame(frame);
+    };
+  })();
+
+  // sounds, synthesised with WebAudio (no files). Browsers only allow audio after a click on the page,
+  // so the 🔇/🔊 button turns it on; the choice is remembered per browser.
+  const sfx = (() => {
+    let ctx = null, on = localStorage.getItem('toasti-sound') === 'on';
+    const wake = () => { ctx ||= new AudioContext(); if (ctx.state === 'suspended') ctx.resume(); };
+    addEventListener('pointerdown', () => on && wake());
+    const label = () => { $('sound').textContent = on ? '🔊' : '🔇'; };
+    $('sound').onclick = () => { on = !on; localStorage.setItem('toasti-sound', on ? 'on' : 'off'); label(); if (on) { wake(); setTimeout(api.ding, 100); } };
+    label();
+    function tone(freq, at, dur, type = 'sine', gain = .2) {
+      const o = ctx.createOscillator(), v = ctx.createGain(), t = ctx.currentTime + at;
+      o.type = type; o.frequency.value = freq;
+      v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(gain, t + .01); v.gain.exponentialRampToValueAtTime(.001, t + dur);
+      o.connect(v).connect(ctx.destination); o.start(t); o.stop(t + dur + .05);
+    }
+    function noise(at, dur, from, to, gain) { // filtered white noise; sweeping the filter makes a whoosh
+      const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), v = ctx.createGain(), t = ctx.currentTime + at;
+      src.buffer = buf; f.type = 'bandpass'; f.Q.value = 1.5;
+      f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + dur);
+      v.gain.setValueAtTime(0, t); v.gain.linearRampToValueAtTime(gain, t + dur * .4); v.gain.linearRampToValueAtTime(0, t + dur);
+      src.connect(f).connect(v).connect(ctx.destination); src.start(t);
+    }
+    const play = fn => () => { if (!on) return; wake(); if (ctx.state === 'running') fn(); };
+    const api = {
+      ding: play(() => { noise(0, .05, 2500, 2500, .5); tone(1760, .06, 1.4, 'sine', .25); tone(3520, .06, .5, 'sine', .06); }), // toaster pop + bell
+      fanfare: play(() => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i * .13, i === 5 ? 1.2 : .3, 'triangle', .22))),
+      crown: play(() => [392, 392, 523, 659, 784].forEach((f, i) => { tone(f, i * .15, .4, 'sawtooth', .07); tone(f * 2, i * .15, .4, 'triangle', .1); })),
+      whoosh: play(() => { noise(0, .7, 250, 5000, .45); tone(220, .5, .3, 'triangle', .12); }),
+    };
+    return api;
+  })();
+
+  // ---- TV mode: full dashboard for 20s, then one panel blown up for 12s, stepping through the leaderboard and each chart.
+  // Turn on with the 📺 button (remembered per display) or by opening /?tv.
+  {
+    const OVERVIEW = 20000, SPOT = 12000;
+    const slides = [['Leaderboard', $('board')], ...[...document.querySelectorAll('#dashboard .chart')].map(card => [null, card])];
+    let on = location.search.includes('tv') || localStorage.getItem('toasti-tv') === 'on', step = 0, timer = null, home = null;
+    function restore() { // put the blown-up panel back where it came from
+      if (!home) return;
+      const [el, parent, next] = home;
+      parent.insertBefore(el, next);
+      home = null;
+      $('spot').className = '';
+    }
+    function spotlight([title, el]) {
+      restore();
+      home = [el, el.parentNode, el.nextSibling];
+      $('spot').replaceChildren(...(title ? [tag('h2', { textContent: title })] : []), el);
+      $('spot').className = 'show';
+    }
+    function tick() {
+      const spot = step % 2 === 1 && !$('dashboard').hidden;
+      if (spot) spotlight(slides[((step - 1) / 2) % slides.length]); else restore();
+      const ms = step % 2 ? SPOT : OVERVIEW;
+      $('tvbar').animate([{ scale: '0 1' }, { scale: '1 1' }], { duration: ms, easing: 'linear' });
+      step++;
+      timer = setTimeout(tick, ms);
+    }
+    function set(v) {
+      on = v; localStorage.setItem('toasti-tv', on ? 'on' : 'off');
+      $('tv').style.opacity = on ? 1 : '';
+      $('tvbar').hidden = !on;
+      clearTimeout(timer); restore();
+      if (on) { step = 0; tick(); }
+    }
+    $('tv').onclick = () => set(!on);
+    set(on);
+  }
+
+  let lastTotal = null, lastSig = null;
+  function render() {
+    const { people } = data, days = {};
+    for (const p of people) for (const [k, n] of Object.entries(p.days || {})) days[k] = (days[k] || 0) + n;
+    const editing = location.hash === '#edit';
+    $('dashboard').hidden = editing;
+    $('edit').hidden = !editing;
+    $('bg').hidden = editing;
+    Object.assign($('switch'), editing ? { href: '#', textContent: 'dashboard' } : { href: '#edit', textContent: 'edit' });
+
+    const total = people.reduce((s, p) => s + p.count, 0);
+    // ties share a rank (1, 1, 3) and are listed alphabetically
+    const ranked = [...people].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    const rankOf = p => 1 + people.filter(q => q.count > p.count).length;
+    const leaders = ranked.filter(p => p.count && p.count === ranked[0].count).map(p => p.name);
+    const max = ranked[0]?.count || 1;
+    $('total').textContent = total;
+    $('today').textContent = days[todayKey()] || 0;
+    Object.assign($('top'), {
+      textContent: !leaders.length ? '–' : leaders.length === 1 ? leaders[0] : leaders.length === 2 ? leaders.join(' & ') : `${leaders.length}-way tie`,
+      title: leaders.join(', '),
+    });
+    $('people').textContent = people.length;
+    $('avg').textContent = people.length ? (total / people.length).toFixed(1) : 0;
+    $('best').textContent = Math.max(0, ...Object.values(days));
+    $('days').textContent = Object.values(days).filter(n => n > 0).length;
+    milestone(total, days);
+    const sig = JSON.stringify(people) + todayKey();
+    if (!editing && sig !== lastSig) { // only when something changed: rebuilding replays all the entrance animations
+      lastSig = sig;
+      const board = $('board'), old = new Map([...board.children].map(li => [li.dataset.name, { top: li.offsetTop, width: li.querySelector('.bar').style.width }]));
+      board.replaceChildren(...ranked.map((p, i) => {
+        const crowned = leaders.length === 1 && leaders[0] === p.name;
+        const li = tag('li', { style: `--i:${i}`, className: zapNames.has(p.name) ? 'zap' : '' },
+          tag('div', { className: 'bar', style: `width:${p.count / max * 100}%` }),
+          crowned ? tag('span', { className: crownDrop === p.name ? 'crown drop' : 'crown', textContent: '👑' }) : '',
+          tag('span', { textContent: p.name }), tag('b', { textContent: p.count }));
+        const rank = rankOf(p);
+        li.dataset.rank = p.count && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank; // nobody gets a medal for 0
+        li.dataset.name = p.name;
+        return li;
+      }));
+      if (old.size) { // FLIP: rows glide from where they were, bars grow from their old length
+        board.classList.add('settled');
+        for (const li of board.children) {
+          const o = old.get(li.dataset.name), bar = li.querySelector('.bar');
+          if (!o) continue;
+          const dy = o.top - li.offsetTop;
+          if (dy) li.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 900, easing: 'cubic-bezier(.2, .9, .3, 1.1)' });
+          if (o.width !== bar.style.width) bar.animate([{ width: o.width }, { width: bar.style.width }], { duration: 900, easing: 'cubic-bezier(.2, .9, .3, 1)' });
+        }
+      }
+      crownDrop = null; zapNames.clear();
+      charts(people, days, total);
+    }
+
+    $('rows').replaceChildren(...people.map(({ name, count }) => {
+      const edit = fn => change(people => { const p = people.find(p => p.name === name); if (p) fn(p, people); });
+      return tag('li', {},
+        tag('span', { textContent: name }),
+        tag('button', { textContent: '−', onclick: () => edit(p => setCount(p, p.count - 1)) }),
+        tag('input', { type: 'number', min: 0, value: count, onchange: e => edit(p => setCount(p, +e.target.value)) }),
+        tag('button', { textContent: '+', onclick: () => edit(p => setCount(p, p.count + 1)) }),
+        tag('button', { textContent: '🗑', onclick: () => confirm(`Remove ${name}?`) && edit((p, people) => people.splice(people.indexOf(p), 1)) }));
+    }));
+
+    if (lastTotal !== null && total > lastTotal) {
+      burst(total - lastTotal);
+      $('total').classList.remove('pop'); void $('total').offsetWidth; $('total').classList.add('pop');
+    }
+    lastTotal = total;
+    syncCount(total);
+  }
+
+  $('add').onsubmit = e => {
+    e.preventDefault();
+    const name = e.target.name.value.trim();
+    e.target.reset();
+    if (name) change(people => people.some(p => p.name === name) ? alert(`${name} is already on the list`) : people.push({ name, count: 0, days: {} }));
+  };
+
+  // ---- three.js: falling, spinning toasties; one per toasti made (capped) ----
+  const renderer = new THREE.WebGLRenderer({ canvas: $('bg'), antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+  camera.position.z = 22;
+  scene.add(new THREE.HemisphereLight(0xfff0d8, 0x4a2810, 2));
+  const sun = new THREE.DirectionalLight(0xfff0dd, 2.5);
+  sun.position.set(5, 10, 8);
+  scene.add(sun);
+
+  // ---- toasties: 6 variants, each one InstancedMesh, so ~35 draw calls no matter how many fall ----
+  // Look based on reference photos of Dutch tostis: golden speckled toast, dark parallel ridges from the
+  // tosti iron on some, brown crust edges, pink ham and cheese oozing out the sides.
+
+  // procedural toast texture: base colour by toast level, uneven browning, speckles, optional grill ridges
+  function toastTexture(toast, grill, burnt) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d'), rnd = (a, b) => a + Math.random() * (b - a);
+    const light = [250, 222, 160], dark = [206, 132, 56];
+    g.fillStyle = `rgb(${light.map((l, i) => Math.round(l + (dark[i] - l) * toast))})`;
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 220; i++) { // uneven browning
+      g.fillStyle = `rgba(160,80,20,${rnd(.03, .08 + toast * .1)})`;
+      g.beginPath(); g.arc(rnd(0, 256), rnd(0, 256), rnd(6, 26), 0, 7); g.fill();
+    }
+    for (let i = 0; i < 1400; i++) { // crumb speckles
+      g.fillStyle = Math.random() < .6 ? `rgba(120,60,15,${rnd(.1, .35)})` : 'rgba(255,240,200,.4)';
+      g.fillRect(rnd(0, 256), rnd(0, 256), rnd(1, 2.5), rnd(1, 2.5));
+    }
+    if (grill) { // ridges: soft wide stroke, then a darker core
+      g.save(); g.translate(128, 128); g.rotate(rnd(.6, .95));
+      for (let x = -200; x < 200; x += 30) for (const [w, a] of [[11, .25], [5, .7]]) {
+        g.strokeStyle = `rgba(55,25,5,${a})`; g.lineWidth = w;
+        g.beginPath(); g.moveTo(x + rnd(-1, 1), -200); g.lineTo(x + rnd(-1, 1), 200); g.stroke();
+      }
+      g.restore();
+    }
+    if (burnt) { // charcoal: dark wash, black scorch patches, grey ash flecks
+      g.fillStyle = 'rgba(40,18,6,.75)'; g.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 90; i++) {
+        g.fillStyle = `rgba(8,4,2,${rnd(.2, .6)})`;
+        g.beginPath(); g.ellipse(rnd(0, 256), rnd(0, 256), rnd(8, 40), rnd(6, 26), rnd(0, 3), 0, 7); g.fill();
+      }
+      for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(170,160,150,${rnd(.15, .45)})`; g.fillRect(rnd(0, 256), rnd(0, 256), rnd(1, 2), rnd(1, 2)); }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1 / 2.6, 1 / 2.6); t.offset.set(.5, .5); // extrude cap UVs are shape coords (~-1.3..1.3)
+    return t;
+  }
+
+  const V = (x, y) => new THREE.Vector2(x, y);
+  const triShape = new THREE.Shape([V(-1.1, -1.1), V(1.3, -1.1), V(-1.1, 1.3)]);
+  const squareShape = new THREE.Shape(); // bread slice: flat sides, domed top
+  squareShape.moveTo(-1.05, -1.1).lineTo(1.05, -1.1).quadraticCurveTo(1.15, -1.1, 1.15, -1)
+    .lineTo(1.15, .75).bezierCurveTo(1.25, 1.25, .6, 1.3, 0, 1.25).bezierCurveTo(-.6, 1.3, -1.25, 1.25, -1.15, .75)
+    .lineTo(-1.15, -1).quadraticCurveTo(-1.15, -1.1, -1.05, -1.1);
+
+  const mat = (color, roughness = .8, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
+  const crustMat = mat(0xc07a35, .85), burntCrustMat = mat(0x1e1008, .95), hamMat = mat(0xe39a96, .55), tomatoMat = mat(0xd8392b, .4);
+  const cheeseMat = mat(0xffc93a, .35, { emissive: 0x5a2a00 });
+
+  // ExtrudeGeometry has two groups: 0 = faces (toasted), 1 = sides (crust). Split them so they can be merged.
+  function splitGroups(geo) {
+    return geo.groups.map(({ start, count }) => {
+      const part = new THREE.BufferGeometry();
+      for (const [name, attr] of Object.entries(geo.attributes))
+        part.setAttribute(name, new THREE.BufferAttribute(attr.array.slice(start * attr.itemSize, (start + count) * attr.itemSize), attr.itemSize));
+      return part;
+    });
+  }
+  const plate = (shape, depth, scale, z) => new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 6 })
+    .translate(0, 0, -depth / 2).scale(scale, scale, 1).translate(0, 0, z);
+
+  // parts: [geometry, material] list -> one geometry with a group per material + the material array
+  function build(parts) {
+    const mats = [...new Set(parts.map(p => p[1]))];
+    const geos = mats.map(m => mergeGeometries(parts.filter(p => p[1] === m).map(p => p[0].index ? p[0].toNonIndexed() : p[0])));
+    for (const g of geos) for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    return [mergeGeometries(geos, true), mats];
+  }
+
+  function toastie({ shape, toast, grill, fill, burnt }) {
+    const top = mat(0xffffff, .95, { map: toastTexture(toast, grill, burnt) });
+    const bottom = mat(0xffffff, .95, { map: toastTexture(toast, false, burnt) });
+    const parts = [];
+    for (const [z, face] of [[.3, top], [-.3, bottom]]) {
+      const [faces, sides] = splitGroups(new THREE.ExtrudeGeometry(shape, { depth: .2, bevelThickness: .07, bevelSize: .07, bevelSegments: 2, curveSegments: 6 }).translate(0, 0, z - .1));
+      parts.push([faces, face], [sides, burnt ? burntCrustMat : crustMat]);
+    }
+    // filling between the slices (they span -0.13..0.13), cheese sticking out a bit further than ham
+    parts.push([plate(shape, .13, 1.05, -.065), cheeseMat]);
+    if (fill === 'tomato') parts.push([plate(shape, .07, 1.01, .035), hamMat], [plate(shape, .06, .98, .1), tomatoMat]);
+    else if (fill === 'ham') parts.push([plate(shape, .13, 1.02, .065), hamMat]);
+    else parts.push([plate(shape, .13, 1.06, .065), cheeseMat]);
+    // a few cheese drips oozing over the edge
+    const edge = shape.getSpacedPoints(40);
+    for (let i = 0; i < 3; i++) {
+      const p = edge[Math.floor(Math.random() * edge.length)];
+      parts.push([new THREE.SphereGeometry(.16, 8, 6).scale(2.4, .7, .45).rotateZ(Math.atan2(p.y, p.x) + Math.PI / 2).translate(p.x * 1.03, p.y * 1.03, -.06), cheeseMat]);
+    }
+    return build(parts);
+  }
+
+  // easter eggs: each has a 0.1% chance to fall instead of a toastie. Open /?burger, /?burrito or /?golden to make it 20%.
+  const eggChance = name => location.search.includes(name) ? .2 : .001;
+  function burger() {
+    const bun = mat(0xd9944a, .7);
+    return build([
+      [new THREE.CylinderGeometry(1.1, 1, .4, 24).translate(0, -.55, 0), bun],
+      [new THREE.CylinderGeometry(1.2, 1.2, .35, 24).translate(0, -.15, 0), mat(0x5a2e1a, .9)],
+      [new THREE.BoxGeometry(1.9, .08, 1.9).rotateY(Math.PI / 4).translate(0, .07, 0), cheeseMat],
+      [new THREE.CylinderGeometry(1.3, 1.3, .08, 12).translate(0, .15, 0), mat(0x5cb83c, .6)],
+      [new THREE.SphereGeometry(1.1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, .2, 0), bun],
+    ]);
+  }
+  function burrito() { // tortilla roll, half in foil, open end showing rice, beans and salsa
+    const fleck = (color, x, y) => [new THREE.SphereGeometry(.09, 6, 4).translate(1.28, x, y), mat(color, .6)];
+    return build([
+      [new THREE.CapsuleGeometry(.55, 1.6, 6, 16).rotateZ(Math.PI / 2), mat(0xf0d6a0, .8)],
+      [new THREE.CylinderGeometry(.58, .58, 1.1, 16, 1, true).rotateZ(Math.PI / 2).translate(-.55, 0, 0), mat(0xd8dde2, .3, { metalness: .8, side: THREE.DoubleSide })],
+      [new THREE.CylinderGeometry(.5, .5, .06, 16).rotateZ(Math.PI / 2).translate(1.22, 0, 0), mat(0x8a4a2a, .8)],
+      fleck(0xf4f0e0, .2, .1), fleck(0x5cb83c, -.15, .2), fleck(0xd8392b, .05, -.25), fleck(0x3a2418, -.25, -.1), fleck(0xf4f0e0, .25, -.2),
+    ]);
+  }
+
+  const MAX = 120; // cap on falling things; instancing makes more cheap, but the scene gets crowded
+  const VARIANTS = [
+    { shape: triShape, toast: .45, grill: true, fill: 'ham' },
+    { shape: triShape, toast: .15, grill: false, fill: 'cheese' },
+    { shape: squareShape, toast: .5, grill: true, fill: 'ham' },
+    { shape: squareShape, toast: .8, grill: false, fill: 'ham' },
+    { shape: triShape, toast: .75, grill: true, fill: 'tomato' },
+    { shape: squareShape, toast: .25, grill: true, fill: 'cheese' },
+    { shape: squareShape, toast: 1, grill: true, fill: 'ham', burnt: true }, // someone forgot it in the tosti iron
+  ].map(toastie);
+  const TOASTIES = VARIANTS.length;
+  const goldMat = mat(0xffc23a, .22, { metalness: .8, emissive: 0x7a4200, emissiveIntensity: .7 });
+  const golden = (([geo, mats]) => [geo, mats.map(() => goldMat)])(toastie({ shape: triShape, toast: .5, grill: true, fill: 'ham' }));
+  const GOLD = VARIANTS.push(golden) - 1;
+  const EGGS = [[VARIANTS.push(burger()) - 1, eggChance('burger')], [VARIANTS.push(burrito()) - 1, eggChance('burrito')], [GOLD, eggChance('golden')]];
+  const meshes = VARIANTS.map(([geo, mats]) => {
+    const m = new THREE.InstancedMesh(geo, mats, MAX);
+    m.frustumCulled = false; // instances are all over the place; the mesh's own bounds don't cover them
+    scene.add(m);
+    return m;
+  });
+  function pickVariant() {
+    let r = Math.random();
+    for (const [variant, chance] of EGGS) { if (r < chance) return variant; r -= chance; }
+    return Math.floor(Math.random() * TOASTIES);
+  }
+
+  const toasties = []; // plain Object3Ds: position/rotation only, drawn through the instanced meshes
+  const FALL = 15; // half-height of the fall zone
+
+  function syncCount(total) {
+    const want = Math.min(Math.max(total, 6), MAX);
+    while (toasties.length < want) {
+      const t = new THREE.Object3D();
+      t.userData = { variant: pickVariant(), v: new THREE.Vector3(0, -.02 - Math.random() * .02, 0), spin: new THREE.Vector3(Math.random(), Math.random(), Math.random()).multiplyScalar(.03) };
+      t.position.set((Math.random() - .5) * 30, (Math.random() - .5) * 2 * FALL, (Math.random() - .5) * 10);
+      t.rotation.set(Math.random() * 7, Math.random() * 7, 0);
+      toasties.push(t);
+    }
+    toasties.length = want;
+  }
+
+  // new toastis: launch some toasties up from the big number
+  function burst(n) {
+    for (const t of toasties.slice(-Math.min(n * 6, toasties.length))) {
+      t.position.set((Math.random() - .5) * 2, 6, 0);
+      t.userData.v.set((Math.random() - .5) * .5, .3 + Math.random() * .3, (Math.random() - .5) * .3);
+      t.userData.spin.multiplyScalar(4);
+    }
+  }
+
+  const mouse = { x: 0, y: 0 };
+  addEventListener('pointermove', e => { mouse.x = e.clientX / innerWidth - .5; mouse.y = e.clientY / innerHeight - .5; });
+  function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+  addEventListener('resize', resize); resize();
+
+  renderer.setAnimationLoop(() => {
+    if ($('bg').hidden) return;
+    const counts = meshes.map(() => 0), party = performance.now() < goldUntil; // milestone party: everything turns gold
+    for (const t of toasties) {
+      const { v, spin } = t.userData;
+      v.y = Math.max(v.y - .008, -.04); // gravity, with a gentle terminal speed
+      v.x *= .98; v.z *= .98;
+      spin.multiplyScalar(.995).clampLength(.01, .2);
+      t.position.add(v);
+      t.rotation.x += spin.x; t.rotation.y += spin.y; t.rotation.z += spin.z;
+      if (t.position.y < -FALL) { // back to the top as a fresh random variant (and a fresh burger roll)
+        t.position.set((Math.random() - .5) * 30, FALL, (Math.random() - .5) * 10);
+        t.userData.variant = pickVariant();
+      }
+      t.updateMatrix();
+      const shown = party ? GOLD : t.userData.variant;
+      meshes[shown].setMatrixAt(counts[shown]++, t.matrix);
+    }
+    meshes.forEach((m, i) => { m.count = counts[i]; m.instanceMatrix.needsUpdate = true; });
+    camera.position.x += (mouse.x * 4 - camera.position.x) * .05;
+    camera.position.y += (-mouse.y * 4 - camera.position.y) * .05;
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  });
+
+  addEventListener('hashchange', pull);
+  // ponytail: 2s polling, switch to SSE if you want instant updates.
+  // Skipped while you're typing in an input, so a re-render can't wipe what you typed.
+  setInterval(() => document.activeElement?.tagName !== 'INPUT' && pull(), 2000);
+  pull();
+</script>
+</body>
+</html>
