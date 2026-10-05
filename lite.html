@@ -155,7 +155,7 @@
 (function () {
   var POLL = 3000;
   var STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
-  // same validated palette as the full dashboard; colour follows the person (add order), 9th+ folds into Other
+  // same validated palette as the full dashboard; the top 8 get colours, the rest fold into Other
   var COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'], OTHER = '#8a7a6a';
   var ACCENT = '#ffb347', W = 600, H = 170, B = 150, T = 18; // chart width, height, baseline, top padding
   var version = null, before = null, lastSig = null, banners = [], showing = false;
@@ -275,16 +275,18 @@
   // ---------------- charts ----------------
   function charts(people, days, total) {
     var i, k;
-    var groups = [];
-    for (i = 0; i < Math.min(people.length, 8); i++) groups.push({ name: people[i].name, count: people[i].count, days: people[i].days || {}, color: COLORS[i] });
-    if (people.length > 8) {
-      var other = { name: 'Other', count: 0, days: {}, color: OTHER };
-      for (i = 8; i < people.length; i++) {
-        other.count += people[i].count;
-        for (k in people[i].days || {}) other.days[k] = (other.days[k] || 0) + people[i].days[k];
-      }
-      groups.push(other);
+    // The 8 biggest toasters get their own colour; everyone else folds into "Other".
+    // Colours go in add order within that top 8 (so they only change when someone enters or leaves it); shown biggest first.
+    function byCount(a, b) { return b.count - a.count || (a.name < b.name ? -1 : 1); }
+    var top = people.slice().sort(byCount).slice(0, 8), groups = [], other = { name: 'Other', count: 0, days: {}, color: OTHER };
+    for (i = 0; i < people.length; i++) {
+      var p = people[i];
+      if (top.indexOf(p) >= 0) { groups.push({ name: p.name, count: p.count, days: p.days || {}, color: COLORS[groups.length] }); continue; }
+      other.count += p.count;
+      for (k in p.days || {}) other.days[k] = (other.days[k] || 0) + p.days[k];
     }
+    groups.sort(byCount);
+    if (people.length > 8) groups.push(other);
 
     // last 14 days
     var items = [];

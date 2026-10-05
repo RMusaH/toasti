@@ -446,11 +446,14 @@
     tag('span', { style: `--i:${i}` }, tag('i', { style: `background:${it.color}` }), `${it.name} `, tag('b', { textContent: it.value ?? '' }))));
 
   function charts(people, days, total) {
-    // colour follows the person (add order), never their rank.
-    // ponytail: 8 colours, everyone after the 8th folds into "Other"
-    const groups = people.slice(0, 8).map((p, i) => ({ ...p, color: COLORS[i] }));
-    if (people.length > 8) {
-      const rest = people.slice(8), merged = {};
+    // The 8 biggest toasters get their own colour; everyone else folds into "Other".
+    // Colours are handed out in add order within that top 8, so a colour only changes when someone
+    // enters or leaves the top 8, not every time ranks shuffle. Shown biggest first, Other last.
+    const top = [...people].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 8);
+    const groups = people.filter(p => top.includes(p)).map((p, i) => ({ ...p, color: COLORS[i] })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    const rest = people.filter(p => !top.includes(p));
+    if (rest.length) {
+      const merged = {};
       for (const p of rest) for (const [k, n] of Object.entries(p.days || {})) merged[k] = (merged[k] || 0) + n;
       groups.push({ name: 'Other', color: OTHER, count: rest.reduce((s, p) => s + p.count, 0), days: merged });
     }
