@@ -15,6 +15,7 @@ node server.js
 Open http://localhost:3000. It needs Node.js and nothing else: no `npm install`. Set `PORT` to use another port.
 
 - `/` is the dashboard.
+- `/lite` is a light version for slow or old TV browsers: no 3D, almost no animation, and plain JavaScript that old browsers can run.
 - `/#edit` is where you add people and update counts.
 
 The data is saved to `data.json`, which is created on the first save. Open dashboards pick up changes automatically, and reload themselves when `index.html` changes.

@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toasti Dashboard (lite)</title>
+<!--
+  Lite dashboard for slow or old TV browsers: no WebGL, no modules, no blur, no SVG filters, no endless animations.
+  Same charts as the full dashboard, drawn as plain SVG and only redrawn when the numbers change. The animations are
+  short one-shots that play on a redraw; a browser that can't do one just shows the chart without it.
+  Plain flexbox and old-school JS (XHR, no ?. / ?? / arrow functions) so ancient smart-TV browsers can run it.
+-->
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #1e0f06; color: #fbe9d0; overflow: hidden; }
+  .page { height: 100%; padding: 2vh 1.5vw; box-sizing: border-box; display: flex; flex-direction: column; }
+  .row { display: flex; }
+  .grow { flex: 1; min-width: 0; min-height: 0; }
+  .card { background: #2c1709; border-radius: 12px; padding: 1.3vh 1vw; box-sizing: border-box; }
+  .label { font-size: 1.5vh; text-transform: uppercase; letter-spacing: .1em; opacity: .65; }
+  .accent { color: #ffb347; }
+
+  header { align-items: center; margin-bottom: 1.5vh; }
+  h1 { margin: 0; font-size: 5vh; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
+  header img { height: 3.5vh; opacity: .85; }
+
+  .left { width: 32%; margin-right: 1.2vw; display: flex; flex-direction: column; }
+  .total { font-size: 14vh; font-weight: 900; line-height: 1; color: #ffb347; transition: transform .3s; }
+  .total.pop { transform: scale(1.12); }
+  .goal { margin: 1vh 0 1.5vh; }
+  .goal-top { font-size: 2.2vh; margin-bottom: .7vh; }
+  .goal-top b { font-size: 2.8vh; }
+  .track { height: 1.4vh; background: #3e2210; border-radius: 1vh; overflow: hidden; }
+  .fill { height: 100%; width: 0; background: #ffb347; transition: width 1s; }
+  .facts { font-size: 1.9vh; margin-top: .7vh; opacity: .9; }
+  .up { color: #6fd58f; } .down { color: #ff8a7a; }
+
+  .stats { display: flex; flex-wrap: wrap; margin: 0 -.5%; }
+  .stats .card { width: 32.3%; margin: 0 .5% 1vh; padding: 1vh .8vw; }
+  .stats b { display: block; font-size: 2.8vh; margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .board { overflow: hidden; margin-top: .5vh; }
+  .board-row { position: relative; display: flex; align-items: center; height: 4.6vh; margin-bottom: .8vh; padding: 0 1vw; border-radius: 10px; background: #2c1709; overflow: hidden; }
+  .board-row .bar { position: absolute; left: 0; top: 0; bottom: 0; background: #5a3412; transition: width 1s; }
+  .board-row span { position: relative; }
+  .board-row .rank { width: 3vw; font-weight: bold; font-size: 2.6vh; }
+  .board-row .name { flex: 1; font-size: 2.6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .board-row .count { font-size: 2.8vh; font-weight: bold; }
+
+  /* charts: 2 x 3 grid built from flex rows */
+  .charts { display: flex; flex-direction: column; }
+  .charts .row { flex: 1; min-height: 0; margin-bottom: 1.2vh; }
+  .charts .row:last-child { margin-bottom: 0; }
+  .chart { flex: 1; min-width: 0; margin-right: 1vw; display: flex; flex-direction: column; }
+  .chart:last-child { margin-right: 0; }
+  .plot { position: relative; flex: 1; min-height: 0; margin-top: .6vh; }
+  .plot svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .plot svg text { fill: #fbe9d0; fill-opacity: .6; font-size: 12px; font-family: Arial, sans-serif; }
+  .plot svg text.val { fill-opacity: .95; font-weight: bold; }
+  .split { display: flex; align-items: center; }
+  .split .plot { height: 100%; }
+  .legend { font-size: 1.5vh; margin-top: .4vh; }
+  .legend span { display: inline-block; margin: 0 1.2vw .3vh 0; white-space: nowrap; }
+  .split .legend { width: 40%; }
+  .split .legend span { display: block; }
+  .legend i { display: inline-block; width: 1.2vh; height: 1.2vh; border-radius: 3px; margin-right: .4vw; vertical-align: middle; }
+
+  /* light, one-shot animations (play when the numbers change) */
+  .plot svg .b { transform-box: fill-box; transform-origin: 50% 100%; animation: grow .7s ease-out both; }
+  @keyframes grow { from { transform: scaleY(0); } }
+  .plot svg.reveal { animation: reveal 1.4s ease-out both; }
+  @keyframes reveal { from { -webkit-clip-path: inset(0 100% 0 0); clip-path: inset(0 100% 0 0); } to { -webkit-clip-path: inset(0 0 0 0); clip-path: inset(0 0 0 0); } }
+  .plot svg.spin-in { animation: spin-in .9s ease-out both; }
+  @keyframes spin-in { from { opacity: 0; transform: rotate(-90deg) scale(.6); } }
+  .plot svg.fade { animation: fade .8s ease-out both; }
+  @keyframes fade { from { opacity: 0; } }
+  .plot svg .today { animation: pulse 1.6s ease-in-out infinite; } /* the only endless one: a single square */
+  @keyframes pulse { 50% { fill-opacity: .4; } }
+  .board-row { animation: row-in .5s ease-out both; }
+  .board-row .bar { animation: bar-in .9s ease-out both; }
+  @keyframes row-in { from { opacity: 0; transform: translateX(-3vw); } }
+  @keyframes bar-in { from { width: 0; } }
+  .legend span { animation: fade .6s ease-out both; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  #banner { position: fixed; left: 0; right: 0; top: 36%; text-align: center; opacity: 0; transition: opacity .4s; pointer-events: none; }
+  #banner.show { opacity: 1; }
+  #banner div { display: inline-block; padding: 2.5vh 4vw; border-radius: 20px; background: #2c1709; border: 3px solid #ffb347; }
+  #banner .big { display: block; font-size: 9vh; font-weight: 900; color: #ffb347; }
+  #banner .sub { display: block; font-size: 3.4vh; font-weight: bold; margin-top: 1vh; }
+  .corner { position: fixed; right: 1vw; bottom: .6vh; font-size: 1.5vh; }
+  .corner a { color: inherit; opacity: .4; margin-left: 1vw; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="row">
+    <h1 class="grow">🥪 <span class="accent">Toasti</span> Dashboard</h1>
+    <img src="/capisoft-logo.png" alt="Capisoft" onerror="this.style.display='none'">
+  </header>
+  <div class="row grow">
+    <div class="left">
+      <div class="label">Toastis made</div>
+      <div class="total" id="total">0</div>
+      <div class="goal">
+        <div class="goal-top">Next milestone <b class="accent" id="goal-next">10</b> &middot; <span id="goal-left"></span></div>
+        <div class="track"><div class="fill" id="goal-fill"></div></div>
+        <div class="facts"><span id="streak"></span> &nbsp; <span id="vs"></span></div>
+      </div>
+      <div class="stats">
+        <div class="card"><div class="label">Today</div><b id="today">0</b></div>
+        <div class="card"><div class="label">Top toaster</div><b id="top">-</b></div>
+        <div class="card"><div class="label">Toasters</div><b id="people">0</b></div>
+        <div class="card"><div class="label">Avg / toaster</div><b id="avg">0</b></div>
+        <div class="card"><div class="label">Best day</div><b id="best">0</b></div>
+        <div class="card"><div class="label">Days toasting</div><b id="ndays">0</b></div>
+      </div>
+      <div class="board grow" id="board"></div>
+    </div>
+    <div class="charts grow">
+      <div class="row">
+        <div class="card chart"><div class="label">Last 14 days</div><div class="plot" id="c-daily"></div></div>
+        <div class="card chart"><div class="label">Total, all time</div><div class="plot" id="c-cumulative"></div></div>
+      </div>
+      <div class="row">
+        <div class="card chart"><div class="label">Share per toaster</div><div class="split grow"><div class="plot" id="c-share"></div><div class="legend" id="l-share"></div></div></div>
+        <div class="card chart"><div class="label">Toaster race, all time</div><div class="plot" id="c-race"></div><div class="legend" id="l-race"></div></div>
+      </div>
+      <div class="row">
+        <div class="card chart"><div class="label">By weekday</div><div class="plot" id="c-weekday"></div></div>
+        <div class="card chart"><div class="label">Last 26 weeks (brighter = more)</div><div class="plot" id="c-heat"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="banner"><div><span class="big" id="banner-big"></span><span class="sub" id="banner-sub"></span></div></div>
+<div class="corner"><a href="/">full</a><a href="/#edit">edit</a></div>
+
+<script>
+(function () {
+  var POLL = 3000;
+  var STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  // same validated palette as the full dashboard; colour follows the person (add order), 9th+ folds into Other
+  var COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'], OTHER = '#8a7a6a';
+  var ACCENT = '#ffb347', W = 600, H = 170, B = 150, T = 18; // chart width, height, baseline, top padding
+  var version = null, before = null, lastSig = null, banners = [], showing = false;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function keyOf(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function daysAgo(n) { var d = new Date(); d.setDate(d.getDate() - n); return d; }
+  function sumCounts(list) { var s = 0; for (var i = 0; i < list.length; i++) s += list[i].count; return s; }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function short(d) { return MONTHS[d.getMonth()] + ' ' + d.getDate(); }
+  // count as it stood at the end of `key`: current count minus everything added after that day
+  function asOf(count, dayMap, key) {
+    var later = 0;
+    for (var k in dayMap || {}) if (k > key) later += dayMap[k];
+    return Math.max(0, count - later);
+  }
+  function svg(viewW, viewH, body, cls) {
+    return '<svg viewBox="0 0 ' + viewW + ' ' + viewH + '" preserveAspectRatio="xMidYMid meet"' + (cls ? ' class="' + cls + '"' : '') + '>' + body + '</svg>';
+  }
+  function text(x, y, s, extra) { return '<text x="' + x + '" y="' + y + '"' + (extra || '') + '>' + esc(s) + '</text>'; }
+
+  function poll() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/data?' + Date.now());
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        var v = xhr.getResponseHeader('x-version');
+        if (version && v !== version) { location.reload(); return; } // page code changed on the server
+        version = v;
+        var people = JSON.parse(xhr.responseText).people || [];
+        if (before) celebrate(before, people);
+        before = people;
+        var sig = xhr.responseText + keyOf(new Date());
+        if (sig !== lastSig) { lastSig = sig; render(people); } // nothing changed: don't touch the page at all
+      }
+      setTimeout(poll, POLL);
+    };
+    xhr.onerror = function () { setTimeout(poll, POLL); };
+    xhr.send();
+  }
+
+  function render(people) {
+    var days = {}, i, k;
+    for (i = 0; i < people.length; i++) for (k in people[i].days || {}) days[k] = (days[k] || 0) + people[i].days[k];
+    var total = sumCounts(people);
+    var ranked = people.slice().sort(function (a, b) { return b.count - a.count || (a.name < b.name ? -1 : 1); });
+    var top = ranked.length ? ranked[0].count : 0;
+    var leaders = ranked.filter(function (p) { return top && p.count === top; }).map(function (p) { return p.name; });
+
+    var old = +$('total').textContent;
+    $('total').textContent = total;
+    if (total > old) { $('total').className = 'total pop'; setTimeout(function () { $('total').className = 'total'; }, 300); }
+
+    var vals = [];
+    for (k in days) vals.push(days[k]);
+    $('today').textContent = days[keyOf(new Date())] || 0;
+    $('top').textContent = !leaders.length ? '-' : leaders.length === 1 ? leaders[0] : leaders.length === 2 ? leaders.join(' & ') : leaders.length + '-way tie';
+    $('people').textContent = people.length;
+    $('avg').textContent = people.length ? (total / people.length).toFixed(1) : 0;
+    $('best').textContent = vals.length ? Math.max.apply(null, vals) : 0;
+    $('ndays').textContent = vals.filter(function (n) { return n > 0; }).length;
+
+    // milestone, streak, today vs yesterday
+    var next = 0, prev = 0;
+    for (i = 0; i < STEPS.length; i++) if (STEPS[i] > total) { next = STEPS[i]; prev = i ? STEPS[i - 1] : 0; break; }
+    if (!next) { next = (Math.floor(total / 10000) + 1) * 10000; prev = next - 10000; }
+    $('goal-next').textContent = next;
+    $('goal-left').textContent = (next - total) + ' to go';
+    $('goal-fill').style.width = Math.round((total - prev) / (next - prev) * 100) + '%';
+    var d = new Date(), streak = 0;
+    if (!days[keyOf(d)]) d.setDate(d.getDate() - 1);
+    while (days[keyOf(d)] > 0) { streak++; d.setDate(d.getDate() - 1); }
+    $('streak').textContent = '🔥 ' + streak + ' day streak';
+    var diff = (days[keyOf(new Date())] || 0) - (days[keyOf(daysAgo(1))] || 0);
+    $('vs').className = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+    $('vs').textContent = diff > 0 ? '▲ ' + diff + ' vs yesterday' : diff < 0 ? '▼ ' + (-diff) + ' vs yesterday' : '= same as yesterday';
+
+    // leaderboard: ties share a rank (1, 1, 3), no medal for 0, crown for a sole leader
+    var html = '', max = top || 1;
+    for (i = 0; i < ranked.length; i++) {
+      var p = ranked[i], rank = 1;
+      for (var j = 0; j < people.length; j++) if (people[j].count > p.count) rank++;
+      var badge = p.count && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank;
+      var crown = leaders.length === 1 && leaders[0] === p.name ? '👑 ' : '';
+      html += '<div class="board-row" style="animation-delay:' + i * 60 + 'ms"><div class="bar" style="width:' + (p.count / max * 100) + '%;animation-delay:' + (i * 60 + 150) + 'ms"></div>' +
+        '<span class="rank">' + badge + '</span><span class="name">' + crown + esc(p.name) + '</span><span class="count">' + p.count + '</span></div>';
+    }
+    $('board').innerHTML = html; // rows that don't fit are cut off at the bottom
+
+    charts(people, days, total);
+  }
+
+  // ---------------- charts ----------------
+  function charts(people, days, total) {
+    var i, k;
+    var groups = [];
+    for (i = 0; i < Math.min(people.length, 8); i++) groups.push({ name: people[i].name, count: people[i].count, days: people[i].days || {}, color: COLORS[i] });
+    if (people.length > 8) {
+      var other = { name: 'Other', count: 0, days: {}, color: OTHER };
+      for (i = 8; i < people.length; i++) {
+        other.count += people[i].count;
+        for (k in people[i].days || {}) other.days[k] = (other.days[k] || 0) + people[i].days[k];
+      }
+      groups.push(other);
+    }
+
+    // last 14 days
+    var items = [];
+    for (i = 13; i >= 0; i--) { var day = daysAgo(i); items.push({ label: day.getDate(), value: days[keyOf(day)] || 0 }); }
+    $('c-daily').innerHTML = bars(items);
+
+    // all days since the first tracked one
+    var keys = [];
+    for (k in days) keys.push(k);
+    keys.sort();
+    var span = 2;
+    if (keys.length) {
+      var p0 = keys[0].split('-');
+      span = Math.max(2, Math.round((new Date() - new Date(+p0[0], p0[1] - 1, +p0[2])) / 864e5) + 1);
+    }
+    var all = [];
+    for (i = span - 1; i >= 0; i--) all.push(daysAgo(i));
+    $('c-cumulative').innerHTML = lines(all, [{ color: ACCENT, values: all.map(function (dd) { return asOf(total, days, keyOf(dd)); }) }], true);
+    $('c-race').innerHTML = lines(all, groups.map(function (g) { return { color: g.color, values: all.map(function (dd) { return asOf(g.count, g.days, keyOf(dd)); }) }; }), false);
+    $('l-race').innerHTML = groups.map(function (g) { return '<span><i style="background:' + g.color + '"></i>' + esc(g.name) + '</span>'; }).join('');
+
+    $('c-share').innerHTML = donut(groups, total);
+    $('l-share').innerHTML = groups.map(function (g) { return '<span><i style="background:' + g.color + '"></i>' + esc(g.name) + ' <b>' + g.count + '</b></span>'; }).join('');
+
+    var wk = [0, 0, 0, 0, 0, 0, 0];
+    for (k in days) { var q = k.split('-'); wk[(new Date(+q[0], q[1] - 1, +q[2]).getDay() + 6) % 7] += days[k]; }
+    $('c-weekday').innerHTML = bars(wk.map(function (v, n) { return { label: WEEKDAYS[n], value: v }; }));
+
+    $('c-heat').innerHTML = heatmap(days);
+  }
+
+  function bars(items) {
+    var max = 1, peak = -1, i;
+    for (i = 0; i < items.length; i++) if (items[i].value > max) max = items[i].value;
+    for (i = 0; i < items.length; i++) if (items[i].value === max) { peak = i; break; }
+    var cw = W / items.length, bw = Math.min(cw - 2, 28), out = '<line x1="0" x2="' + W + '" y1="' + B + '" y2="' + B + '" stroke="#5a3a22"/>';
+    for (i = 0; i < items.length; i++) {
+      var it = items[i], x = i * cw + (cw - bw) / 2, h = it.value / max * (B - T);
+      if (h) out += '<rect class="b" style="animation-delay:' + i * 40 + 'ms" x="' + x + '" y="' + (B - h) + '" width="' + bw + '" height="' + h + '" rx="3" fill="' + ACCENT + '"/>';
+      out += text(x + bw / 2, H - 4, it.label, ' text-anchor="middle"');
+      if (i === peak && it.value) out += text(x + bw / 2, B - h - 5, it.value, ' text-anchor="middle" class="val"');
+    }
+    return svg(W, H, out);
+  }
+
+  function lines(dates, series, fill) {
+    var n = dates.length, step = (W - 16) / (n - 1), max = 1, i, s;
+    for (s = 0; s < series.length; s++) for (i = 0; i < n; i++) if (series[s].values[i] > max) max = series[s].values[i];
+    function x(i) { return (8 + i * step).toFixed(1); }
+    function y(v) { return (B - v / max * (B - T)).toFixed(1); }
+    var out = '<line x1="0" x2="' + W + '" y1="' + B + '" y2="' + B + '" stroke="#5a3a22"/>' +
+      text(8, H - 4, short(dates[0])) + text(W - 8, H - 4, short(dates[n - 1]), ' text-anchor="end"');
+    for (s = 0; s < series.length; s++) {
+      var pts = [];
+      for (i = 0; i < n; i++) pts.push(x(i) + ',' + y(series[s].values[i]));
+      if (fill) out += '<path d="M' + x(0) + ',' + B + ' L' + pts.join(' L') + ' L' + x(n - 1) + ',' + B + 'Z" fill="' + series[s].color + '" fill-opacity=".18"/>';
+      out += '<path d="M' + pts.join(' L') + '" fill="none" stroke="' + series[s].color + '" stroke-width="2" stroke-linejoin="round"/>';
+    }
+    if (series.length === 1) { var last = series[0].values[n - 1]; out += text(x(n - 1), y(last) - 8, last, ' text-anchor="end" class="val"'); }
+    return svg(W, H, out, 'reveal');
+  }
+
+  function donut(groups, total) {
+    var R = 80, r = 52, c = 85, a = -Math.PI / 2, out = '', i;
+    function at(rad, ang) { return (c + rad * Math.cos(ang)).toFixed(2) + ',' + (c + rad * Math.sin(ang)).toFixed(2); }
+    for (i = 0; i < groups.length; i++) {
+      var g = groups[i];
+      if (!g.count) continue;
+      var a2 = a + Math.min(g.count / (total || 1) * 2 * Math.PI, 2 * Math.PI - 1e-4), big = a2 - a > Math.PI ? 1 : 0;
+      out += '<path d="M' + at(R, a) + ' A' + R + ',' + R + ' 0 ' + big + ' 1 ' + at(R, a2) + ' L' + at(r, a2) + ' A' + r + ',' + r + ' 0 ' + big + ' 0 ' + at(r, a) + 'Z" fill="' + g.color + '" stroke="#2c1709" stroke-width="2"/>';
+      a = a2;
+    }
+    out += text(c, c + 8, total, ' text-anchor="middle" class="val" style="font-size:24px"');
+    return svg(170, 170, out, 'spin-in');
+  }
+
+  function heatmap(days) {
+    var weeks = 26, cell = 16, gap = 3, left = 30, top = 4, today = new Date(), max = 1, k, w, dow;
+    for (k in days) if (days[k] > max) max = days[k];
+    var start = new Date();
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - (weeks - 1) * 7); // Monday, 25 weeks back
+    var out = text(0, top + 12, 'Mon') + text(0, top + 2 * (cell + gap) + 12, 'Wed') + text(0, top + 4 * (cell + gap) + 12, 'Fri');
+    for (w = 0; w < weeks; w++) for (dow = 0; dow < 7; dow++) {
+      var d = new Date(start.getTime());
+      d.setDate(start.getDate() + w * 7 + dow);
+      if (d > today) continue;
+      var v = days[keyOf(d)] || 0;
+      out += '<rect' + (keyOf(d) === keyOf(today) ? ' class="today"' : '') + ' x="' + (left + w * (cell + gap)) + '" y="' + (top + dow * (cell + gap)) + '" width="' + cell + '" height="' + cell + '" rx="3" ' +
+        (v ? 'fill="' + ACCENT + '" fill-opacity="' + (.25 + .75 * v / max).toFixed(2) + '"' : 'fill="#fbe9d0" fill-opacity=".07"') + '/>';
+    }
+    return svg(530, 150, out, 'fade');
+  }
+
+  // ---------------- celebrations: same events as the full dashboard, as simple text banners ----------------
+  function celebrate(was, now) {
+    var prevOf = {}, i, j;
+    for (i = 0; i < was.length; i++) prevOf[was[i].name] = was[i].count;
+    function prev(name) { return prevOf[name] || 0; }
+    var makers = now.filter(function (p) { return p.count > prev(p.name); });
+    if (!makers.length) return;
+    var t0 = sumCounts(was), t1 = sumCounts(now), hit = 0;
+    for (i = 0; i < STEPS.length; i++) if (t0 < STEPS[i] && STEPS[i] <= t1) hit = STEPS[i];
+    if (Math.floor(t1 / 10000) > Math.floor(t0 / 10000) && t1 >= 20000) hit = Math.floor(t1 / 10000) * 10000;
+    if (hit) announce('🎉 ' + hit + ' TOASTIS', 'milestone reached!');
+    function sole(list) {
+      var top = 0, names = [];
+      for (var k = 0; k < list.length; k++) top = Math.max(top, list[k].count);
+      for (k = 0; k < list.length; k++) if (top && list[k].count === top) names.push(list[k].name);
+      return names.length === 1 ? names[0] : null;
+    }
+    var leader = sole(now);
+    if (leader && leader !== sole(was)) announce('👑 ' + leader, 'takes the lead!');
+    for (i = 0; i < makers.length; i++) {
+      var p = makers[i], passed = [];
+      if (p.name === leader) continue;
+      for (j = 0; j < now.length; j++) {
+        var q = now[j];
+        if (q.name !== p.name && prev(p.name) < prev(q.name) && p.count > q.count) passed.push(q.name);
+      }
+      if (passed.length) announce('⚡ ' + p.name, 'overtook ' + (passed.length <= 2 ? passed.join(' & ') : passed.slice(0, 2).join(', ') + ' and ' + (passed.length - 2) + ' more') + '!');
+    }
+  }
+  function announce(big, sub) {
+    banners.push([big, sub]);
+    if (!showing) nextBanner();
+  }
+  function nextBanner() {
+    var b = banners.shift();
+    if (!b) { showing = false; return; }
+    showing = true;
+    $('banner-big').textContent = b[0];
+    $('banner-sub').textContent = b[1];
+    $('banner').className = 'show';
+    setTimeout(function () { $('banner').className = ''; setTimeout(nextBanner, 500); }, 3500);
+  }
+
+  poll();
+})();
+</script>
+</body>
+</html>
