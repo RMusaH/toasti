@@ -23,6 +23,18 @@
   header { align-items: center; margin-bottom: 1.5vh; }
   h1 { margin: 0; font-size: 5vh; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
   header img { height: 3.5vh; opacity: .85; }
+  .ico { display: inline-block; height: 1em; width: 1em; vertical-align: -.12em; }
+  h1 .ico { height: .9em; width: .9em; margin-right: .2em; }
+  .board-row .rank .ico { height: 3.4vh; width: 3.4vh; vertical-align: middle; }
+
+  /* parade: walkers cross the header. Each walker sits in a full-width lane that slides with a transform
+     (cheap on any TV); arms and legs swing with SVG's own animation, which very old browsers support. */
+  .parade { position: relative; flex: 1; height: 9vh; max-height: 90px; margin: 0 1.5vw; } /* tall enough for a walker plus its smoke; not clipped */
+  .lane { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    -webkit-animation: lane 34s linear infinite; animation: lane 34s linear infinite; }
+  .lane svg { position: absolute; left: 0; bottom: 0; overflow: visible; } /* size set in JS: same as the full dashboard */
+  @-webkit-keyframes lane { 0% { -webkit-transform: translateX(-5%); opacity: 0; } 4% { opacity: 1; } 93% { opacity: 1; } 100% { -webkit-transform: translateX(97%); opacity: 0; } }
+  @keyframes lane { 0% { transform: translateX(-5%); opacity: 0; } 4% { opacity: 1; } 93% { opacity: 1; } 100% { transform: translateX(97%); opacity: 0; } }
 
   .left { width: 32%; margin-right: 1.2vw; display: flex; flex-direction: column; }
   .total { font-size: 14vh; font-weight: 900; line-height: 1; color: #ffb347; transition: transform .3s; }
@@ -87,6 +99,8 @@
   #banner.show { opacity: 1; }
   #banner div { display: inline-block; padding: 2.5vh 4vw; border-radius: 20px; background: #2c1709; border: 3px solid #ffb347; }
   #banner .big { display: block; font-size: 9vh; font-weight: 900; color: #ffb347; }
+  #banner .icon { display: block; margin-bottom: 1vh; }
+  #banner .icon .ico { height: 11vh; width: 11vh; }
   #banner .sub { display: block; font-size: 3.4vh; font-weight: bold; margin-top: 1vh; }
   .corner { position: fixed; right: 1vw; bottom: .6vh; font-size: 1.5vh; }
   .corner a { color: inherit; opacity: .4; margin-left: 1vw; }
@@ -95,7 +109,8 @@
 <body>
 <div class="page">
   <header class="row">
-    <h1 class="grow">🥪 <span class="accent">Toasti</span> Dashboard</h1>
+    <h1><span id="h1-ico"></span><span class="accent">Toasti</span> Dashboard</h1>
+    <div class="parade" id="parade"></div>
     <img src="/capisoft-logo.png" alt="Capisoft" onerror="this.style.display='none'">
   </header>
   <div class="row grow">
@@ -133,7 +148,7 @@
     </div>
   </div>
 </div>
-<div id="banner"><div><span class="big" id="banner-big"></span><span class="sub" id="banner-sub"></span></div></div>
+<div id="banner"><div><span class="icon" id="banner-icon"></span><span class="big" id="banner-big"></span><span class="sub" id="banner-sub"></span></div></div>
 <div class="corner"><a href="/">full</a><a href="/#edit">edit</a></div>
 
 <script>
@@ -144,6 +159,27 @@
   var COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'], OTHER = '#8a7a6a';
   var ACCENT = '#ffb347', W = 600, H = 170, B = 150, T = 18; // chart width, height, baseline, top padding
   var version = null, before = null, lastSig = null, banners = [], showing = false;
+
+  // icons drawn as SVG instead of emoji: many old TV browsers have no emoji font and show empty boxes
+  function ico(viewBox, body) { return '<svg class="ico" viewBox="' + viewBox + '">' + body + '</svg>'; }
+  function medal(fill, edge, n) {
+    return ico('0 0 24 24', '<path d="M7 1h4l2 7H9z" fill="#d95926"/><path d="M13 1h4l-2 7h-4z" fill="#3987e5"/>' +
+      '<circle cx="12" cy="15" r="7.5" fill="' + fill + '" stroke="' + edge + '" stroke-width="1.5"/>' +
+      '<text x="12" y="18.6" text-anchor="middle" font-size="10" font-weight="bold" font-family="Arial" fill="#3a2210">' + n + '</text>');
+  }
+  var ICON = {
+    toastie: ico('0 0 24 24', '<path d="M3.5 21V9.5C1.5 4 7 1.5 12 2.6 17 1.5 22.5 4 20.5 9.5V21z" fill="#e8b46e" stroke="#9a5a24" stroke-width="1.6"/>' +
+      '<path d="M5 13l6-6M5 18l11-11M9 21l10-10M14 21l5-5" stroke="#9a5a24" stroke-width="1.3" opacity=".55"/>' +
+      '<path d="M6.5 21q1.2 3 2.4 0M14 21q1.2 3.4 2.4 0" stroke="#ffc93a" stroke-width="2" fill="none" stroke-linecap="round"/>'),
+    medals: [medal('#ffd84a', '#c98500', 1), medal('#d8dde2', '#8a929a', 2), medal('#e0915a', '#9a5a24', 3)],
+    crown: ico('0 0 24 24', '<path d="M2.5 18L4.5 7l5 5L12 4l2.5 8 5-5 2 11z" fill="#ffd84a" stroke="#c98500" stroke-width="1.3" stroke-linejoin="round"/><rect x="3" y="18.5" width="18" height="2.6" rx="1" fill="#c98500"/>'),
+    fire: ico('0 0 24 24', '<path d="M12 1.5c1 4.5 7 6.5 7 13a7 7 0 0 1-14 0c0-3.5 2.2-5.8 3.5-7.6.2 3 1.4 4.4 2.6 4.6-.6-4.2-.4-7.4.9-10z" fill="#ff7b00"/><path d="M12 11.5c.5 2.4 3.5 3.4 3.5 6.2a3.5 3.5 0 0 1-7 0c0-2.2 1.6-3 2-4.6.6 1.3 1 1.6 1.5 1.6z" fill="#ffd84a"/>'),
+    up: ico('0 0 24 24', '<path d="M12 4l9 15H3z" fill="#6fd58f"/>'),
+    down: ico('0 0 24 24', '<path d="M12 20L3 5h18z" fill="#ff8a7a"/>'),
+    trophy: ico('0 0 24 24', '<path d="M6 2.5h12v5.5a6 6 0 0 1-12 0z" fill="#ffd84a" stroke="#c98500" stroke-width="1.2"/><path d="M6 4.5H2.5a3.5 3.5 0 0 0 4 4.4M18 4.5h3.5a3.5 3.5 0 0 1-4 4.4" fill="none" stroke="#c98500" stroke-width="1.6"/>' +
+      '<rect x="10.5" y="13.5" width="3" height="4" fill="#c98500"/><rect x="7" y="17.5" width="10" height="3.5" rx="1" fill="#ffd84a" stroke="#c98500" stroke-width="1.2"/>'),
+    bolt: ico('0 0 24 24', '<path d="M14 1.5L4 14h7l-2 8.5L20 9h-7z" fill="#ffd84a" stroke="#c98500" stroke-width="1.2" stroke-linejoin="round"/>')
+  };
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -216,18 +252,18 @@
     var d = new Date(), streak = 0;
     if (!days[keyOf(d)]) d.setDate(d.getDate() - 1);
     while (days[keyOf(d)] > 0) { streak++; d.setDate(d.getDate() - 1); }
-    $('streak').textContent = '🔥 ' + streak + ' day streak';
+    $('streak').innerHTML = ICON.fire + ' ' + streak + ' day streak';
     var diff = (days[keyOf(new Date())] || 0) - (days[keyOf(daysAgo(1))] || 0);
     $('vs').className = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
-    $('vs').textContent = diff > 0 ? '▲ ' + diff + ' vs yesterday' : diff < 0 ? '▼ ' + (-diff) + ' vs yesterday' : '= same as yesterday';
+    $('vs').innerHTML = diff > 0 ? ICON.up + ' ' + diff + ' vs yesterday' : diff < 0 ? ICON.down + ' ' + (-diff) + ' vs yesterday' : '= same as yesterday';
 
     // leaderboard: ties share a rank (1, 1, 3), no medal for 0, crown for a sole leader
     var html = '', max = top || 1;
     for (i = 0; i < ranked.length; i++) {
       var p = ranked[i], rank = 1;
       for (var j = 0; j < people.length; j++) if (people[j].count > p.count) rank++;
-      var badge = p.count && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : rank;
-      var crown = leaders.length === 1 && leaders[0] === p.name ? '👑 ' : '';
+      var badge = p.count && rank <= 3 ? ICON.medals[rank - 1] : rank;
+      var crown = leaders.length === 1 && leaders[0] === p.name ? ICON.crown + ' ' : '';
       html += '<div class="board-row" style="animation-delay:' + i * 60 + 'ms"><div class="bar" style="width:' + (p.count / max * 100) + '%;animation-delay:' + (i * 60 + 150) + 'ms"></div>' +
         '<span class="rank">' + badge + '</span><span class="name">' + crown + esc(p.name) + '</span><span class="count">' + p.count + '</span></div>';
     }
@@ -352,7 +388,7 @@
     var t0 = sumCounts(was), t1 = sumCounts(now), hit = 0;
     for (i = 0; i < STEPS.length; i++) if (t0 < STEPS[i] && STEPS[i] <= t1) hit = STEPS[i];
     if (Math.floor(t1 / 10000) > Math.floor(t0 / 10000) && t1 >= 20000) hit = Math.floor(t1 / 10000) * 10000;
-    if (hit) announce('🎉 ' + hit + ' TOASTIS', 'milestone reached!');
+    if (hit) announce(ICON.trophy, hit + ' TOASTIS', 'milestone reached!');
     function sole(list) {
       var top = 0, names = [];
       for (var k = 0; k < list.length; k++) top = Math.max(top, list[k].count);
@@ -360,7 +396,7 @@
       return names.length === 1 ? names[0] : null;
     }
     var leader = sole(now);
-    if (leader && leader !== sole(was)) announce('👑 ' + leader, 'takes the lead!');
+    if (leader && leader !== sole(was)) announce(ICON.crown, leader, 'takes the lead!');
     for (i = 0; i < makers.length; i++) {
       var p = makers[i], passed = [];
       if (p.name === leader) continue;
@@ -368,23 +404,91 @@
         var q = now[j];
         if (q.name !== p.name && prev(p.name) < prev(q.name) && p.count > q.count) passed.push(q.name);
       }
-      if (passed.length) announce('⚡ ' + p.name, 'overtook ' + (passed.length <= 2 ? passed.join(' & ') : passed.slice(0, 2).join(', ') + ' and ' + (passed.length - 2) + ' more') + '!');
+      if (passed.length) announce(ICON.bolt, p.name, 'overtook ' + (passed.length <= 2 ? passed.join(' & ') : passed.slice(0, 2).join(', ') + ' and ' + (passed.length - 2) + ' more') + '!');
     }
   }
-  function announce(big, sub) {
-    banners.push([big, sub]);
+  function announce(icon, big, sub) {
+    banners.push([icon, big, sub]);
     if (!showing) nextBanner();
   }
   function nextBanner() {
     var b = banners.shift();
     if (!b) { showing = false; return; }
     showing = true;
-    $('banner-big').textContent = b[0];
-    $('banner-sub').textContent = b[1];
+    $('banner-icon').innerHTML = b[0];
+    $('banner-big').textContent = b[1];
+    $('banner-sub').textContent = b[2];
     $('banner').className = 'show';
     setTimeout(function () { $('banner').className = ''; setTimeout(nextBanner, 500); }, 3500);
   }
 
+  // the parade, drawn like the full dashboard's: knees and elbows, the same gait, lean, bob, blinking and smoke.
+  // Gait over one stride (T): stance 0-60% (thigh sweeps back, knee nearly straight), swing 60-100% (knee folds,
+  // leg comes forward); the other leg is half a stride behind and each arm swings against its own leg.
+  // All movement is SVG's own <animateTransform>, which old TV browsers support; the walk across is a CSS transform.
+  function parade() {
+    var GAP = 4, T = .75, LEG = 16, VIEW_H = 58, DEG = Math.PI / 180;
+    var tones = ['#e8b46e', '#d99a4e', '#f0c886', '#c98a45'];
+    var slice = 'M8,36 L8,15 C4,3 16,1 20,3 C24,1 36,3 32,15 L32,36 Q32,38 30,38 L10,38 Q8,38 8,36Z';
+    var h = Math.min(70, window.innerHeight * .07);
+    // feet stay planted: during stance the hip travels LEG * (sin 20 + sin 25) in 60% of a stride
+    var speed = h / VIEW_H * LEG * (Math.sin(20 * DEG) + Math.sin(25 * DEG)) / (.6 * T); // px/s
+    var loop = $('parade').offsetWidth * 1.02 / speed, n = Math.ceil(loop / GAP), html = '';
+
+    // rotation around (x, y) through angles at keyTimes; `late` = this limb runs half a stride behind
+    function turn(x, y, angles, times, late, ease) {
+      return '<animateTransform attributeName="transform" type="rotate" dur="' + T + 's" repeatCount="indefinite" begin="' + (late ? -T / 2 : 0) + 's"' +
+        ' keyTimes="' + times + '" values="' + angles.map(function (a) { return a + ' ' + x + ' ' + y; }).join(';') + '"' +
+        (ease ? ' calcMode="spline" keySplines="' + angles.slice(1).map(function () { return '.42 0 .58 1'; }).join(';') + '"' : '') + '/>';
+    }
+    function leg(x, late, color) {
+      return '<g>' + turn(x, 37, [-25, 20, -12, -25], '0;.6;.82;1', late) +
+        '<path d="M' + x + ',37 v8" stroke="' + color + '"/>' +
+        '<g>' + turn(x, 45, [3, 14, 4, 32, 62, 8, 3], '0;.15;.4;.6;.75;.92;1', late) +
+        '<path d="M' + x + ',45 v8" stroke="' + color + '"/><ellipse cx="' + (x + 2.5) + '" cy="54" rx="3.4" ry="1.8" fill="' + color + '" stroke="none"/></g></g>';
+    }
+    function arm(x, late, color) {
+      return '<g>' + turn(x, 21, [22, -22, 22], '0;.5;1', late, true) +
+        '<path d="M' + x + ',21 v7" stroke="' + color + '"/>' +
+        '<g>' + turn(x, 28, [-12, -38, -12], '0;.5;1', late, true) +
+        '<path d="M' + x + ',28 v6" stroke="' + color + '"/><circle cx="' + x + '" cy="34.5" r="2" fill="' + color + '" stroke="none"/></g></g>';
+    }
+    function eye(cx, color) {
+      return '<ellipse cx="' + cx + '" cy="19" rx="2.1" ry="2.1" fill="' + color + '"><animate attributeName="ry" values="2.1;2.1;.2;2.1" keyTimes="0;.94;.97;1" dur="3.7s" repeatCount="indefinite"/></ellipse>';
+    }
+
+    for (var i = 0; i < n; i++) {
+      var burnt = Math.random() < 1 / 6, grill = !burnt && Math.random() < .5;
+      var tone = burnt ? '#3a2314' : tones[Math.floor(Math.random() * tones.length)], ink = burnt ? '#f3e6d4' : '#2a1406', id = 'slice' + i;
+      var delay = -i * GAP + 's', dur = loop + 's';
+      html += '<div class="lane" style="-webkit-animation-duration:' + dur + ';animation-duration:' + dur + ';-webkit-animation-delay:' + delay + ';animation-delay:' + delay + '">' +
+        '<svg viewBox="0 0 40 58" style="height:' + h + 'px;width:' + (h * 40 / 58) + 'px">' +
+        '<g transform="rotate(4 20 58)"><g stroke-width="3" stroke-linecap="round" fill="none">' + // lean forward
+        '<animateTransform attributeName="transform" type="translate" values="0 1.2;0 -1.2;0 1.2" dur="' + T / 2 + 's" repeatCount="indefinite" calcMode="spline" keySplines=".42 0 .58 1;.42 0 .58 1"/>' + // bob each step
+        leg(17, true, '#c9ad80') + arm(32, false, '#c9ad80') +
+        '<g stroke="none"><defs><clipPath id="' + id + '"><path d="' + slice + '"/></clipPath></defs>' +
+        '<path d="' + slice + '" fill="' + tone + '" stroke="' + (burnt ? '#120904' : '#9a5a24') + '" stroke-width="2.4"/>' +
+        (burnt ? '<g clip-path="url(#' + id + ')" fill="#0e0703"><ellipse cx="12" cy="10" rx="7" ry="5"/><ellipse cx="29" cy="31" rx="8" ry="6"/><ellipse cx="20" cy="36" rx="9" ry="3"/></g>' +
+          [0, 1, 2].map(function (k) {
+            var b = -k * .6 + 's';
+            return '<circle cx="' + (16 + k * 4) + '" cy="3" r="2.4" fill="#a39a92">' +
+              '<animate attributeName="cy" values="3;-13" dur="1.8s" begin="' + b + '" repeatCount="indefinite"/>' +
+              '<animate attributeName="r" values="1.5;5.3" dur="1.8s" begin="' + b + '" repeatCount="indefinite"/>' +
+              '<animate attributeName="opacity" values=".8;0" dur="1.8s" begin="' + b + '" repeatCount="indefinite"/></circle>';
+          }).join('') : '') +
+        (grill ? '<g clip-path="url(#' + id + ')" stroke="#5a3010" stroke-width="2.2" opacity=".55">' + [0, 8, 16, 24, 32].map(function (o) { return '<path d="M' + (o - 6) + ',38 L' + (o + 14) + ',0"/>'; }).join('') + '</g>' : '') +
+        '<path d="M11,38 q2,6 4,0 M23,38 q2,7 4,0" stroke="#ffc93a" stroke-width="3" stroke-linecap="round" fill="none"/>' +
+        eye(17, ink) + eye(26, ink) +
+        '<circle cx="29" cy="25" r="2" fill="#ff8a7a" opacity=".6"/>' +
+        '<path d="' + (burnt ? 'M19,28 Q23,24 27,28' : 'M19,25 Q23,29 27,25') + '" stroke="' + ink + '" stroke-width="1.8" stroke-linecap="round" fill="none"/></g>' +
+        leg(23, false, '#f5d9a8') + arm(9, true, '#f5d9a8') +
+        '</g></g></svg></div>';
+    }
+    $('parade').innerHTML = html;
+  }
+
+  $('h1-ico').innerHTML = ICON.toastie;
+  parade();
   poll();
 })();
 </script>
